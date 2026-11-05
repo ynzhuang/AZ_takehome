@@ -66,7 +66,7 @@ def create_app(settings: Settings | None = None, interpreter: Interpreter | None
     @app.post("/ask", response_model=AskResponse)
     def ask(req: AskRequest):
         svc: AssistantService = app.state.service
-        resp = svc.ask(req.question)
+        resp = svc.ask(req.question, req.context)
         log.info("ask trace=%s status=%s tool=%s", resp.trace_id, resp.status, resp.interpretation.tool)
         return JSONResponse(status_code=http_status_for(resp), content=resp.model_dump(mode="json"))
 

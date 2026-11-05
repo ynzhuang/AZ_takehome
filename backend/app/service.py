@@ -18,7 +18,7 @@ from .fx import FxRateMissing
 from .llm import Interpreter, InterpreterError
 from .schemas import (
     TOOL_PARAMS, TOOL_ROUTE, AskResponse, Clarification, ClauseRef, ErrorInfo, Evidence, EvidenceRow,
-    FxRateRef, Interpretation, Versions,
+    FxRateRef, Interpretation, PreviousTurn, Versions,
 )
 from .tools import TOOLS, Context, InvalidParams, NeedsClarification, NotFound, OutOfPeriod, ToolOutput
 
@@ -45,7 +45,7 @@ class AssistantService:
 
     # ------------------------------------------------------------------ /ask
 
-    def ask(self, question: str) -> AskResponse:
+    def ask(self, question: str, context: PreviousTurn | None = None) -> AskResponse:
         question = question.strip()
         base: dict[str, Any] = {
             "trace_id": uuid.uuid4().hex[:12],
@@ -55,7 +55,7 @@ class AssistantService:
         interp = Interpretation(interpreter=self.interpreter.label)
 
         try:
-            call = self.interpreter.interpret(question)
+            call = self.interpreter.interpret(question, context)
         except InterpreterError as e:
             return self._error(base, interp, e.code, e.message)
         interp.tool, interp.route, interp.params, interp.latency_ms, interp.usage = (
@@ -66,7 +66,9 @@ class AssistantService:
         except ValidationError as e:
             return self._error(base, interp, "invalid_params",
                                f"The interpreter returned invalid parameters for '{call.name}': {_brief(e)}")
-        interp.params = params.model_dump(mode="json", exclude_defaults=True)
+        interp.params = params.model_dump(mode="json", exclude_defaults=True, exclude={"follow_up"})
+        if context is not None and getattr(params, "follow_up", False):  # counts only when context was sent
+            interp.follow_up_to = context.question
 
         if call.name == "clarify":
             return AskResponse(**base, status="clarification_needed", answer=params.question, interpretation=interp,

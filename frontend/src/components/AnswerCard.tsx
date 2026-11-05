@@ -85,6 +85,12 @@ function Response({ r, busy, onAsk, onEdit }: { r: AskResponse; busy: boolean; o
         )}
       </div>
 
+      {it.follow_up_to && (
+        <div className="followup">
+          Follow-up to: “{it.follow_up_to}”. The settings above include what was carried over.
+        </div>
+      )}
+
       {/* 1. Key findings. For invoice checks the per-rule lines are shown as a table instead of repeated text. */}
       <pre className="answer">{checks ? r.answer.split("\n")[0] : r.answer}</pre>
 

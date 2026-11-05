@@ -75,13 +75,19 @@ CASES = [
      "alt_tools": ["spend"]},  # a spend call with 2024 dates is declined by the period guard
     {"id": "T11", "question": "Which invoices are missing an approver?", "status": "answered", "tool": "exceptions",
      "params": {"check": "missing_approver"}, "rows": "T11", "required_clauses": ["3.1"]},
-    # Follow-up regression (found in manual testing): the second question depends on the first.
-    # Correct: the missing-PO list for CC-FIN-100 (10 invoices), or a clarification question.
-    # Answering anything else (e.g. all CC-FIN-100 spend) is critical: a confident answer to a different question.
+    # Follow-ups (found in manual testing). Earlier turns are sent first; the last answered turn is passed as
+    # context exactly as the frontend does. T17: the follow-up must narrow the previous analysis (answering
+    # with a different analysis is critical). T18: a self-contained question after it must NOT inherit filters.
+    # T19: a referring question sent without context must be clarified, not guessed.
     {"id": "T17", "turns": ["Which invoices of EUR 1,000 or more have no PO?"],
-     "question": "How about just the invoices from CC-FIN-100?", "status": "answered",
-     "alt_status": ["clarification_needed"], "tool": "exceptions",
-     "params": {"check": "missing_po", "cost_centers": ["CC-FIN-100"]}, "rows": "T17", "required_clauses": ["2.1", "2.2"]},
+     "question": "How about just the invoices from CC-FIN-100?", "status": "answered", "tool": "exceptions",
+     "params": {"check": "missing_po", "cost_centers": ["CC-FIN-100"]}, "rows": "T17", "required_clauses": ["2.1", "2.2"],
+     "follow_up": True},
+    {"id": "T18", "turns": ["Which invoices of EUR 1,000 or more have no PO?"],
+     "question": "What is our total spend with vendors based in Spain?", "status": "answered", "tool": "spend",
+     "params": {"countries": ["Spain"]}, "rows": "T2", "follow_up": False},
+    {"id": "T19", "question": "How about just the invoices from CC-FIN-100?", "status": "clarification_needed",
+     "tool": "clarify", "min_options": 0},  # without context, options can only be guesses; asking is what matters
 ]
 
 # --------------------------------------------------------------------------- checks
@@ -109,12 +115,6 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
     interp = r["interpretation"]
     tool, params = interp.get("tool"), interp.get("params") or {}
     want = case["status"]
-
-    # Acceptable alternative outcome (e.g. a follow-up that may be clarified instead of answered)
-    if r["status"] != want and r["status"] in case.get("alt_status", []):
-        if r["result"] or r["evidence"]["row_count"]:
-            fail("no_partial_answer", CRITICAL, "system", "non-answer carries a result or evidence")
-        return f
 
     # Status / behaviour
     if r["status"] != want:
@@ -144,9 +144,14 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
     if case["tool"] == "approval_tier" and tool == "approval_tier" and params.get("currency") not in (None, "EUR"):
         fail("interpretation.params", MAJOR, "interpretation", f"currency={params.get('currency')}")
 
+    if "follow_up" in case and bool(interp.get("follow_up_to")) != case["follow_up"]:
+        fail("interpretation.follow_up", MAJOR, "interpretation",
+             f"follow_up_to={interp.get('follow_up_to')!r} (expected {'the previous question' if case['follow_up'] else 'none'})")
+
     if r["status"] != "answered":
-        if want == "clarification_needed" and r["status"] == want and len((r.get("clarification") or {}).get("options", [])) < 2:
-            fail("clarification.options", MAJOR, "interpretation", "fewer than 2 rewritten options")
+        min_options = case.get("min_options", 2)
+        if want == "clarification_needed" and r["status"] == want and len((r.get("clarification") or {}).get("options", [])) < min_options:
+            fail("clarification.options", MAJOR, "interpretation", f"fewer than {min_options} rewritten options")
         if r["status"] != "answered" and (r.get("result") or r["evidence"]["row_count"]):
             fail("no_partial_answer", CRITICAL, "system", "non-answer carries a result or evidence")
         return f
@@ -372,11 +377,15 @@ def main() -> int:
         for case in CASES:
             runs = []
             for i in range(args.runs):
-                # Earlier turns are sent exactly as the frontend sends them (one question per request).
+                # Earlier turns are sent first; like the frontend, only the last *answered* turn is passed as context.
+                context = None
                 for earlier in case.get("turns", []):
-                    c.post("/ask", json={"question": earlier})
+                    prev = c.post("/ask", json={"question": earlier, **({"context": context} if context else {})}).json()
+                    if prev["status"] == "answered":
+                        it = prev["interpretation"]
+                        context = {"question": prev["question"], "tool": it["tool"], "params": it["params"]}
                 t = time.monotonic()
-                resp = c.post("/ask", json={"question": case["question"]})
+                resp = c.post("/ask", json={"question": case["question"], **({"context": context} if context else {})})
                 body = resp.json()
                 findings = check_e2e(case, body, exp)
                 runs.append({"run": i + 1, "http": resp.status_code, "status": body["status"],

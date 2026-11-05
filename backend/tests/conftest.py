@@ -30,8 +30,10 @@ class FakeInterpreter:
 
     def __init__(self, name: str = "decline", arguments: dict | None = None, error: InterpreterError | None = None):
         self.name, self.arguments, self.error = name, arguments or {}, error
+        self.received_context = None
 
-    def interpret(self, question: str) -> ToolCall:
+    def interpret(self, question: str, context=None) -> ToolCall:
+        self.received_context = context
         if self.error:
             raise self.error
         return ToolCall(self.name, self.arguments, latency_ms=1)

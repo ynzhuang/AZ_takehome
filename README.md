@@ -19,13 +19,13 @@ I focused on the Finance problem rather than building a general chatbot. The LLM
 
 ### 2. How I evaluated it
 
-For evaluation, I focused on three things: whether the LLM understands the question, whether the results and evidence are correct, and whether Finance users can understand the answers and limitations. I used independently calculated expected answers and tested ambiguity, missing information and failures. I ran 11 cases, 3 runs each, with 2 models, and no critical errors were reported. But this is still a small test set and doesn't prove production readiness.
+For evaluation, I focused on three things: whether the LLM understands the question, whether the results and evidence are correct, and whether Finance users can understand the answers and limitations. I used independently calculated expected answers and tested ambiguity, missing information and failures. I ran 14 cases, 3 runs each, with 2 models, and no critical errors were reported. But this is still a small test set and doesn't prove production readiness.
 
 ### 3. What production would need
 
 For production with 200 Finance users, I would consider role-based access control (since different users may have different permissions), real data integration, and audit trails under policy §8.2. I would also collect human-labeled examples to evaluate and improve performance. If policy documents become large and complex, I would consider RAG with a vector database. Production would also need policy versioning, data validation, CI/CD, and monitoring of latency, errors and costs. Before deployment, I would run a pilot with Finance users to check accuracy, missed exceptions and usability.
 
-**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00059 per question with `anthropic/claude-haiku-5.5` and USD 0.00005 with `openai/gpt-6-luna` (run 5, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 50/month with Haiku** or **USD 4/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
+**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00064 per question with `anthropic/claude-haiku-5.5` and USD 0.00006 with `openai/gpt-6-luna` (run 8, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 54/month with Haiku** or **USD 5/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
 
 ### 4. Optional enhancement: evaluation set and scoring script
 
@@ -43,9 +43,9 @@ For the optional enhancement, I chose the evaluation set and scoring script beca
 
 ## Screenshots
 
-| Start-up summary (no LLM) | Invoice check: evidence and limitations | LLM unavailable: fails closed |
-|---|---|---|
-| ![startup](docs/screenshots/01-startup.png) | ![invoice check](docs/screenshots/04-invoice-check.png) | ![error](docs/screenshots/05-llm-error.png) |
+| Start-up summary (no LLM) | Invoice check: evidence and limitations | Follow-up with one-turn context | LLM unavailable: fails closed |
+|---|---|---|---|
+| ![startup](docs/screenshots/01-startup.png) | ![invoice check](docs/screenshots/04-invoice-check.png) | ![follow-up](docs/screenshots/07-follow-up.png) | ![error](docs/screenshots/05-llm-error.png) |
 
 ## How it works
 
@@ -76,7 +76,11 @@ answer  ◄── fixed template ◄── deterministic tool (pandas, ECB FX, p
   - Non-EUR amounts are converted at the official ECB rate for the invoice date. If none was published that day, the most recent earlier rate is used.
   - Approval tiers and the PO threshold are read from the policy document. If the document can't be parsed, the app won't start.
 - **Answer text comes from fixed templates**, filled from the structured result. No second LLM call is made.
-- **Failures fail closed.** An LLM timeout, a malformed tool call, invalid parameters or a missing FX rate all return `status: "error"`, with no result and no evidence. The UI says "no answer produced".
+- **Failures fail closed.** An LLM timeout, a malformed tool call, invalid parameters or a missing FX rate all return `status: "error"`, with no result and no evidence. The UI says "no answer produced". Exactly one tool call per question is enforced by the API request (`parallel_tool_calls: false`).
+- **Follow-ups use one previous turn, not chat history.**
+  - The frontend sends the last *answered* question and its interpretation (tool and parameters) as optional `context`. The backend validates it with the same schemas.
+  - The LLM sees it as a marked data block. If the new question builds on it ("How about just CC-FIN-100?"), the LLM reuses those settings, applies only the change, and sets a `follow_up` flag. The answer card then shows "Follow-up to: …", and the parameter chips show the full settings used.
+  - A question that only makes sense as a follow-up but arrives without context is clarified, not guessed.
 
 ## Setup and run
 
@@ -132,8 +136,8 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
 
 | Provider | Model | Status |
 |---|---|---|
-| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 5 separate evaluation runs |
-| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 3 separate evaluation runs |
+| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 8 separate evaluation runs |
+| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 6 separate evaluation runs |
 | Stub (`LLM_PROVIDER=stub`) | keyword rules | Runs offline. Not an LLM; it fails some reworded questions. The UI header labels it "(not an LLM)" |
 | OpenAI direct, Ollama, other OpenAI-compatible APIs | — | **Untested.** They should work if they support tools and `tool_choice: "required"` |
 
@@ -141,7 +145,7 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
 
 - **`GET /health`:** which interpreter is in use, plus the data, policy and FX versions.
 - **`GET /summary`:** works without the LLM. Returns net EUR spend, totals by currency and by vendor status, counts of invoices needing follow-up (no PO at or above the threshold, no approver, non-active vendor), and FX source information.
-- **`POST /ask`** with `{"question": "..."}`. It always returns this shape:
+- **`POST /ask`** with `{"question": "...", "context": {"question": "...", "tool": "exceptions", "params": {"check": "missing_po"}}}`. `context` is optional: the previous answered turn, used for follow-ups. It always returns this shape:
 
 ```json
 {
@@ -149,7 +153,8 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
   "question": "…", "answer": "text from a fixed template", "result": { "…structured figures…" },
   "interpretation": { "tool": "spend", "route": "data", "params": { "countries": ["Spain"] },
                       "interpreter": "anthropic/claude-haiku-5.5 via https://openrouter.ai/api/v1",
-                      "latency_ms": 900, "usage": { "prompt_tokens": 5561, "completion_tokens": 65, "cost": 0.0006 } },
+                      "latency_ms": 900, "usage": { "prompt_tokens": 6124, "completion_tokens": 64, "cost": 0.0006 },
+                      "follow_up_to": null },
   "evidence": { "rows": ["…invoice rows with EUR amount and FX rate used…"], "row_count": 49,
                 "clauses": [{ "id": "5.1", "section": "…", "text": "…" }], "fx_rates": ["…"] },
   "assumptions": ["…"], "limitations": ["…"],
@@ -163,7 +168,7 @@ HTTP status codes:
 - **200:** answered, clarification needed, or declined.
 - **502:** the LLM failed or returned invalid parameters.
 - **503:** an FX rate is missing.
-- **422:** the request itself is invalid.
+- **422:** the request itself is invalid, including an invalid `context`.
 
 ## Frontend
 
@@ -186,15 +191,15 @@ HTTP status codes:
   | Error | Error code, "nothing above is a partial result", Retry |
   | Network failure or timeout | Error message and Retry |
 
-- **No conversation memory:** clarification works without it, as described above. State is plain `useState`.
+- **Follow-ups:** each question sends the last answered turn as `context`; no chat history is kept or sent. Clarification still works without it, as described above. State is plain `useState`.
 
 ## Tests and evaluation
 
 | What | Command | Result (2026-11-05) |
 |---|---|---|
-| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **67 passed** |
+| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **78 passed** |
 | Evaluation (uses the LLM in `.env`) | `backend/.venv/bin/python eval/run_eval.py --runs 3` | See below |
-| UI smoke test against the running app (optional; needs Playwright) | `cd frontend && node e2e/ui_smoke.mjs` | **24/24 checks passed** (real backend; LLM-down case used a backend pointed at an unreachable LLM endpoint) |
+| UI smoke test against the running app (optional; needs Playwright) | `cd frontend && node e2e/ui_smoke.mjs` | **28/28 checks passed**, including a follow-up (real backend; LLM-down case used a backend pointed at an unreachable LLM endpoint) |
 | Frontend type check and build | `cd frontend && npm run build` | Passes |
 
 **How the evaluation works** (design §3):
@@ -203,18 +208,19 @@ HTTP status codes:
 - Each case runs 3 times and the worst run counts.
 - Clarification options are re-asked to check they get answered correctly.
 - Failures are injected: timeout, malformed tool call, invalid parameters.
+- Follow-up cases send the earlier question first and pass the last answered turn as context, as the frontend does. T18 checks that a self-contained question does not inherit filters; T19 checks that a follow-up sent without context is clarified.
 
-**Results, final run (run 5):** 11 cases (T1–T6, T8, T11, plus rewordings of T1, T3 and T5) and 3 injected failures.
+**Results, final run (run 8):** 14 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, and follow-ups T17–T19) and 3 injected failures.
 
 | Model (OpenRouter) | Critical errors | Cases with no findings | Tools level | Failure injection | Median latency | Median tokens per question | Median cost per question |
 |---|---|---|---|---|---|---|---|
-| `anthropic/claude-haiku-5.5` | 0 | 11/11 | 6/6 | 3/3 | 905 ms | 5,561 + 65 | USD 0.00059 |
-| `openai/gpt-6-luna` | 0 | 11/11 | 6/6 | 3/3 | 1,161 ms | 2,888 + 24 | USD 0.00005 |
+| `anthropic/claude-haiku-5.5` | 0 | 14/14 | 8/8 | 3/3 | 933 ms | 6,124 + 64 | USD 0.00064 |
+| `openai/gpt-6-luna` | 0 | 14/14 | 8/8 | 3/3 | 1,212 ms | 3,330 + 31 | USD 0.00006 |
 
 **History, kept in full in [`eval/results/README.md`](eval/results/README.md):**
 - **Run 1** flagged 4 "major" consistency findings. These were a **checker issue**: the check compared LLM-written wording rather than meaning. After the fix, run 2 and run 3 are clean.
 - **Manual testing found a bug the evaluation had missed:** for "top 5 vendors", the notes (non-active invoices, credit notes, converted invoices) described all 140 invoices instead of the 85 invoices of the vendors shown. The figures were correct. A new check that notes must match the evidence rows reported critical errors in T1 and T1-v on the unfixed code (run 4). After the fix, run 5 is clean. Runs 1–3 did not include this check.
-- **Open issue (found in manual testing):** follow-up questions that depend on the previous question (e.g. "How about just the invoices from CC-FIN-100?") are interpreted without that context and can return a different analysis. Regression case T17 fails for both models on the current code (run 6). Fix pending.
+- **Manual testing found a second bug the evaluation had missed:** a follow-up ("How about just the invoices from CC-FIN-100?") was interpreted without the previous question and returned all CC-FIN-100 spend instead of the 10 missing-PO invoices. On the unfixed code, the new two-turn case T17 failed for both models (run 6). After adding one-turn context, the first attempt (run 7) fixed T17 but caused Haiku to make two tool calls (T4) and invent tool names (T19). Enforcing a single tool call and simplifying the prompt fixed both. Run 8 is clean.
 - A stub dry run showed the scorer does catch failures. It also found a real defect: a figure appeared in the answer text but not in the result. That defect was fixed.
 - **Caveat:** 11 questions over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
 
