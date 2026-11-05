@@ -16,6 +16,7 @@ No secrets and no raw chat history.
 | 4. Architecture | "Review critically; suggest a minimal plan; what is over-complicated or missing given the time limit?" | Fixed tools with validated parameters (no generated SQL); LLM interprets only; fixed answer templates (no second LLM call); `/summary` without LLM; simple UI with no conversation memory; never return incomplete results |
 | 5. Backend | "Backend first with tests; OpenRouter with configurable model; .env support; no keys in git; keep this log; scan for credentials before pushing." | Real ECB rates only, never assumed; be explicit about which providers were actually tested; review the backend before the frontend |
 | 6. Frontend | "Vite + React + TypeScript, keep it simple. Key findings and limitations first, evidence in collapsible tables. Handle all response states. Change 'NO ISSUE FOUND' wording. Then run the full app and evaluation again, keep the original reports including the checker issue." | Architecture stays in the README (no design §4); check results worded as "No issue detected in checked fields" |
+| 7. README | "Move the write-up after the introduction, use my wording and only fix grammar, remove the old write-up, keep the technical sections unchanged, replace the time estimate with a placeholder, check links and numbers, don't change app code." Then: "Add back a short cost estimate for 200 users, clear that it's only model API cost based on assumptions." | The write-up is in my own words; time spent is left for me to fill in; the cost estimate covers LLM API calls only, with its assumptions stated |
 
 ## 2. Corrections the review produced
 
@@ -42,12 +43,15 @@ No secrets and no raw chat history.
 | UI smoke test: an ambiguous selector matched both the parameter chip and the answer text | Fixed the test (selector scoped to the chip); not an app bug |
 | Re-running the evaluation would overwrite earlier reports | Reports renamed by run (`eval/results/README.md`); new runs are timestamped by default. Run 1's JSON had already been overwritten by run 2; its Markdown report is kept |
 | Production cost was an estimate | Token usage and provider-reported cost are now captured per question and summarised in each evaluation report |
+| The AI-drafted README write-up was not in my words, and its time estimate came from git history, which misses my planning and review time | Replaced with my own write-up (grammar fixes only); time spent is a placeholder for me to fill in |
+| The cost estimate was removed together with the old write-up | Re-added as a short, assumption-based estimate of model API cost only (about USD 50/month with Haiku, USD 4/month with gpt-6-luna, for 200 users × 20 questions per working day), explicitly not total production cost |
 
 ## 4. Verification actually run (2026-11-05)
 
 - Backend: 65 pytest tests passed (no network).
 - Evaluation, run 3 (after the frontend), 3 runs per case: 0 critical errors and 11/11 cases with no findings for both `anthropic/claude-haiku-5.5` and `openai/gpt-6-luna`; failure injection 3/3.
 - Full app: two backends (one with an unreachable LLM endpoint) plus the Vite dev server, driven by `frontend/e2e/ui_smoke.mjs`: 24/24 UI checks passed. Screenshots in `docs/screenshots/` were reviewed by eye, which is how the duplicated invoice-check text and the overlapping composer were found.
+- README restructure: technical sections confirmed byte-for-byte unchanged; all relative links resolve; figures checked against the run 2 and run 3 reports; backend tests re-run (65 passed). No app code changed.
 
 ## 5. Prompts in the product
 
