@@ -192,7 +192,7 @@ HTTP status codes:
 
 | What | Command | Result (2026-11-05) |
 |---|---|---|
-| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **66 passed** |
+| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **67 passed** |
 | Evaluation (uses the LLM in `.env`) | `backend/.venv/bin/python eval/run_eval.py --runs 3` | See below |
 | UI smoke test against the running app (optional; needs Playwright) | `cd frontend && node e2e/ui_smoke.mjs` | **24/24 checks passed** (real backend; LLM-down case used a backend pointed at an unreachable LLM endpoint) |
 | Frontend type check and build | `cd frontend && npm run build` | Passes |
@@ -214,6 +214,7 @@ HTTP status codes:
 **History, kept in full in [`eval/results/README.md`](eval/results/README.md):**
 - **Run 1** flagged 4 "major" consistency findings. These were a **checker issue**: the check compared LLM-written wording rather than meaning. After the fix, run 2 and run 3 are clean.
 - **Manual testing found a bug the evaluation had missed:** for "top 5 vendors", the notes (non-active invoices, credit notes, converted invoices) described all 140 invoices instead of the 85 invoices of the vendors shown. The figures were correct. A new check that notes must match the evidence rows reported critical errors in T1 and T1-v on the unfixed code (run 4). After the fix, run 5 is clean. Runs 1–3 did not include this check.
+- **Open issue (found in manual testing):** follow-up questions that depend on the previous question (e.g. "How about just the invoices from CC-FIN-100?") are interpreted without that context and can return a different analysis. Regression case T17 fails for both models on the current code (run 6). Fix pending.
 - A stub dry run showed the scorer does catch failures. It also found a real defect: a figure appeared in the answer text but not in the result. That defect was fixed.
 - **Caveat:** 11 questions over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
 

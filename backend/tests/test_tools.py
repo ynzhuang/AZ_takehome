@@ -159,3 +159,10 @@ def test_top_n_notes_describe_the_groups_shown(ctx):
     assert any(lim.startswith("Includes 17 invoice(s) (EUR 1,084,833.66)") and "ON_HOLD" not in lim for lim in out.limitations)
     assert f"{int((rows['currency'] != 'EUR').sum())} non-EUR invoice(s) converted" in notes
     assert "cover all 140 invoices" in notes
+
+
+def test_missing_po_for_one_cost_centre(ctx):
+    """Follow-up regression (T17): the deterministic answer the follow-up should produce."""
+    out = exceptions(ctx, ExceptionsParams(check="missing_po", cost_centers=["CC-FIN-100"]))
+    assert out.result["count"] == 10 and out.result["total_eur"] == 383083.04
+    assert set(out.rows["cost_center"]) == {"CC-FIN-100"} and out.rows["po_number"].isna().all()

@@ -75,6 +75,13 @@ CASES = [
      "alt_tools": ["spend"]},  # a spend call with 2024 dates is declined by the period guard
     {"id": "T11", "question": "Which invoices are missing an approver?", "status": "answered", "tool": "exceptions",
      "params": {"check": "missing_approver"}, "rows": "T11", "required_clauses": ["3.1"]},
+    # Follow-up regression (found in manual testing): the second question depends on the first.
+    # Correct: the missing-PO list for CC-FIN-100 (10 invoices), or a clarification question.
+    # Answering anything else (e.g. all CC-FIN-100 spend) is critical: a confident answer to a different question.
+    {"id": "T17", "turns": ["Which invoices of EUR 1,000 or more have no PO?"],
+     "question": "How about just the invoices from CC-FIN-100?", "status": "answered",
+     "alt_status": ["clarification_needed"], "tool": "exceptions",
+     "params": {"check": "missing_po", "cost_centers": ["CC-FIN-100"]}, "rows": "T17", "required_clauses": ["2.1", "2.2"]},
 ]
 
 # --------------------------------------------------------------------------- checks
@@ -102,6 +109,12 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
     interp = r["interpretation"]
     tool, params = interp.get("tool"), interp.get("params") or {}
     want = case["status"]
+
+    # Acceptable alternative outcome (e.g. a follow-up that may be clarified instead of answered)
+    if r["status"] != want and r["status"] in case.get("alt_status", []):
+        if r["result"] or r["evidence"]["row_count"]:
+            fail("no_partial_answer", CRITICAL, "system", "non-answer carries a result or evidence")
+        return f
 
     # Status / behaviour
     if r["status"] != want:
@@ -152,7 +165,7 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
             fail("figures", CRITICAL, "system", f"top5 {got} != {exp['T1']['top5']}")
         if abs(res.get("total_eur", 0) - exp["T1"]["total_eur"]) > 0.01:
             fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp['T1']['total_eur']}")
-    if key in ("T2", "T4", "T11") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
+    if key in ("T2", "T4", "T11", "T17") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
         fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp[key]['total_eur']}")
     if key == "T11" and res.get("also_missing_po") != exp["T11"]["also_missing_po"]:
         fail("figures", CRITICAL, "system", f"also_missing_po {res.get('also_missing_po')}")
@@ -359,6 +372,9 @@ def main() -> int:
         for case in CASES:
             runs = []
             for i in range(args.runs):
+                # Earlier turns are sent exactly as the frontend sends them (one question per request).
+                for earlier in case.get("turns", []):
+                    c.post("/ask", json={"question": earlier})
                 t = time.monotonic()
                 resp = c.post("/ask", json={"question": case["question"]})
                 body = resp.json()
@@ -433,7 +449,8 @@ def render_report(label, settings, runs, started, finished, tool_results, e2e, t
         acts = "; ".join(f"{r['status']}/{r['tool']}" for r in x["runs"])
         fs = [f"{f['check']}: {f['detail']}" for r in x["runs"] for f in r["findings"]] + [f"{f['check']}: {f['detail']}" for f in x["consistency"]]
         fs = list(dict.fromkeys(fs))
-        L.append(f"| {c['id']} | {c['question']} | {c['status']} / {c['tool']} | {acts} | `{json.dumps(x['runs'][0]['params'])}` | "
+        q = " → ".join(c.get("turns", []) + [c["question"]])
+        L.append(f"| {c['id']} | {q} | {c['status']} / {c['tool']} | {acts} | `{json.dumps(x['runs'][0]['params'])}` | "
                  f"{x['worst'] or 'pass'} | {'<br>'.join(fs) or '-'} |")
     L += ["", "## Tools level (canonical parameters, no LLM)", "", "| Case | Findings |", "|---|---|"]
     L += [f"| {t['id']} | {'<br>'.join(f['check'] + ': ' + f['detail'] for f in t['findings']) or 'pass'} |" for t in tool_results]
@@ -455,7 +472,8 @@ def render_report(label, settings, runs, started, finished, tool_results, e2e, t
         L += ["", line + ". Clarification follow-through calls are not included."]
     L += ["", "## Answers (run 1)", ""]
     for x in e2e:
-        L += [f"**{x['case']['id']}**: {x['case']['question']}", "", "```", x["runs"][0]["answer"], "```", ""]
+        L += [f"**{x['case']['id']}**: {' → '.join(x['case'].get('turns', []) + [x['case']['question']])}", "", "```",
+              x["runs"][0]["answer"], "```", ""]
     return "\n".join(L)
 
 
