@@ -179,3 +179,80 @@ My original questions, with the decisions taken:
 | **Vendor status history** | Current snapshot only | A status history with effective dates, to check status at the invoice or payment date |
 | **FX** | Static ECB file | A scheduled, versioned rate import with gap and anomaly checks |
 
+
+## 3. Evaluation
+
+### 3.1 Approach
+
+The goal is to find critical errors and report actual behaviour per case, not only an accuracy percentage. Evaluation runs at three levels so that each failure can be traced to the layer that caused it.
+
+| Level | What is tested | How |
+|---|---|---|
+| **Tools** (no LLM) | Calculations, FX conversion, filters, policy tier lookup, evidence rows | Unit tests comparing tool output with the independent expected answers |
+| **LLM interpretation** | Route (data / policy / both), tool and filters, and the decision to answer, clarify, or decline | Compare the **structured interpretation** returned by `/ask` with the expected interpretation |
+| **End-to-end** | The full `/ask` response: figures, evidence, citations, limitations, wording | Run each case 3 times; the **worst run** counts |
+
+**Expected answers** are computed by a separate script (pandas) that does not reuse application code. The only shared input is the ECB rate file.
+
+**FX prerequisite:** figures use actual ECB reference rates, stored in a versioned file with source and retrieval date. Rates are never assumed or generated. Until real rates are available, cases that depend on conversion are reported as **blocked**, not passed.
+
+### 3.2 Failure severity
+
+| Severity | Definition | Effect |
+|---|---|---|
+| **Critical** | Unsupported compliance or authority conclusion; wrong figure (> EUR 0.01); invalid or non-supporting evidence or citation; answering when it should clarify or decline; naming a person as an authorised approver | Any occurrence fails the evaluation |
+| **Major** | Correct result but wrong interpretation recorded (right number, wrong reason); a required limitation or assumption missing; an unnecessary clarification question | Reported and fixed before the next iteration |
+| **Minor** | Wording, formatting, or verbosity that does not change meaning | Noted |
+
+### 3.3 Test cases
+
+| ID | Question | Expected behaviour | Critical if |
+|---|---|---|---|
+| T1 | What are our top 5 vendors by total spend in 2025? | Data route. Net EUR by `vendor_id`, credit notes included; values from expected-answer script. Evidence: per-vendor totals with their invoice rows; FX rates shown | Currencies summed without conversion; credit notes ignored; wrong ranking |
+| T2 | What is our total spend with vendors based in Spain? | Data + vendor join. 3 vendors (V-1002, V-1006, V-1009), 49 invoices (30 EUR, 12 GBP, 7 USD); states that INACTIVE PharmaPrint is included | Wrong invoice set; currencies mixed |
+| T3 | Who is allowed to approve an invoice of EUR 60,000? | Policy route. Finance Director, citing §3; no data needed | Names a person; wrong tier |
+| T4 | Which invoices of EUR 1,000 or more have no PO, and who should they be flagged to? | Data + policy. 21 invoices grouped by cost centre (§2.1–2.2); labelled *potential* exceptions (blanket POs §2.3 and emergencies §9 cannot be checked); cost-centre owner unknown | Called violations; invoices missed or extra |
+| T5 | What is our consulting spend? | Clarify: vendor category Consulting (14 invoices) or "consulting" descriptions (13 invoices); no overlap | Answers without clarifying |
+| T6 | Was INV-20008 approved by someone with sufficient authority? | Required tier from the converted amount (GBP 50,350.62, 2025-02-13; tier from expected-answer script). Approver r.okafor's role is not in the data, so the answer is "cannot be determined" | States the approval was sufficient or insufficient |
+| T8 | What was our total spend in 2024? | Decline: data covers 2025 only | Returns a figure |
+| T11 | Which invoices are missing an approver? | 25 invoices to hold and not pay (§3.1); 3 of them also lack a PO | Wrong count; says the invoices are approved |
+| T16 | LLM timeout or malformed tool call (injected) | `/ask` returns an explicit error; no partial answer; `/summary` still loads | Partial or fabricated answer |
+
+**Phrasing variants** (selected cases only, each must produce the same interpretation and figures as the original):
+- T1: "Which suppliers did we spend the most with last year?" *(also tests "last year" means 2025, or that the assistant states this assumption)*
+- T3: "Who signs off on a 60k invoice?" *(amount without currency means EUR is assumed and stated)*
+- T5: "How much went on consulting?" *(must still clarify)*
+
+### 3.4 Metrics
+
+| Level | Metric | Target |
+|---|---|---|
+| All | Critical errors (count and list) | **0** |
+| LLM | Route and filters match the expected interpretation | All cases |
+| LLM | Correct answer / clarify / decline decision (T5, T8 and variants) | All cases |
+| LLM | Phrasing variants give the same interpretation as the original | All variants |
+| Tools / E2E | Figures match expected within ± EUR 0.01 | All cases |
+| Tools / E2E | Evidence rows equal the rows used in the result (no missing, no extra) | All cases |
+| E2E | Every cited clause and invoice exists | All cases |
+| E2E | Every figure in the answer text matches the tool output | All cases |
+| E2E | Required limitations present (T4, T6) and no forbidden claims | All cases |
+| E2E | Same results across 3 runs | All cases |
+
+Forbidden claims are checked with a keyword list ("compliant", "properly approved", "violation", a person's name as approver) plus a manual read of all outputs. At about 40 outputs, manual review is feasible.
+
+### 3.5 Reporting
+
+The scoring script produces one row per case and run: question, expected result, actual answer, structured interpretation, pass/fail per check, severity, and **the layer that failed** (interpretation, tool, data, policy rule, or display). It ends with a list of critical errors with details, then the summary counts. The report is the actual results, not just a score.
+
+### 3.6 Product evaluation
+
+The aim is to check whether an analyst can understand the answer, its basis, and its limits.
+- **Answer card checklist** (per answer): answer, how the question was interpreted, evidence rows with count, policy clauses, FX rates, assumptions, and limitations.
+- **Comprehension check:** show 3 answers (T2, T4, T6) to 1–2 people and ask them three things: what is the answer, what is it based on, and what can it *not* tell you. Record whether each was understood correctly.
+
+### 3.7 Limits of this evaluation
+
+Nine cases on 140 rows is a smoke test and regression guard, not proof of accuracy. Documented but not built:
+- remaining cases from the review (an approval amount in another currency with no date, credit-note matching, policy-change and dirty-data fixtures, prompt injection);
+- checks that totals add up across groupings;
+- a production pilot measuring analyst agreement, false flags, missed exceptions, and time to verify an answer.
