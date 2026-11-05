@@ -166,3 +166,43 @@ def test_missing_po_for_one_cost_centre(ctx):
     out = exceptions(ctx, ExceptionsParams(check="missing_po", cost_centers=["CC-FIN-100"]))
     assert out.result["count"] == 10 and out.result["total_eur"] == 383083.04
     assert set(out.rows["cost_center"]) == {"CC-FIN-100"} and out.rows["po_number"].isna().all()
+
+
+# ----------------------------------------------------------------------------- third cold review: missing values
+
+
+def test_invoice_check_flags_missing_po_and_approver_for_all_140_invoices(ctx):
+    """Missing values load as NaN, which is truthy: every invoice is checked against the raw CSV, not the app's frame."""
+    import pandas as pd
+
+    from .conftest import DATA_DIR
+
+    raw = pd.read_csv(DATA_DIR / "invoices_2025_clean.csv", dtype=str, keep_default_na=False).set_index("invoice_number")
+    status = pd.read_csv(DATA_DIR / "vendor_master.csv", dtype=str).set_index("vendor_id")["status"]
+    assert len(raw) == 140
+    for number, row in raw.iterrows():
+        out = invoice_check(ctx, InvoiceCheckParams(invoice_number=number))
+        checks = {c["clause"]: c for c in out.result["checks"]}
+        details = " ".join(c["detail"] for c in out.result["checks"]).lower()
+        assert "nan" not in details.replace(".", " ").split(), number
+        assert checks["4.1"]["result"] == ("ok" if status[row.vendor_id] == "ACTIVE" else "flag"), number
+        if float(row.amount) < 0:
+            continue  # credit notes: no approval or PO check (§6.1)
+        assert checks["3.1"]["result"] == ("ok" if row.approved_by else "flag"), number
+        assert out.result["approved_by"] == (row.approved_by or None), number
+        expected_po = ("ok" if row.po_number else "flag") if out.result["amount_eur"] >= 1000 else "not_applicable"
+        assert checks["2.1"]["result"] == expected_po, number
+
+
+def test_invoice_check_inv_20005_missing_approver(ctx):
+    checks = {c["clause"]: c for c in invoice_check(ctx, InvoiceCheckParams(invoice_number="INV-20005")).result["checks"]}
+    assert checks["3.1"]["result"] == "flag" and checks["3.1"]["label"] == "Flag for review"
+    assert "No approver recorded" in checks["3.1"]["detail"]
+    assert checks["2.1"]["result"] == "ok" and "PO-79125" in checks["2.1"]["detail"]
+
+
+def test_invoice_check_inv_20077_missing_po(ctx):
+    checks = {c["clause"]: c for c in invoice_check(ctx, InvoiceCheckParams(invoice_number="INV-20077")).result["checks"]}
+    assert checks["2.1"]["result"] == "flag" and "No PO number" in checks["2.1"]["detail"]
+    assert checks["3.1"]["result"] == "ok" and "l.chen" in checks["3.1"]["detail"]
+    assert checks["4.1"]["result"] == "flag"  # Crown Travel Partners is ON_HOLD

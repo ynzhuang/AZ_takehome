@@ -227,3 +227,11 @@ def test_real_system_prompt_renders(ctx):
     prompt = build_system_prompt(ctx.data, ctx.policy)
     assert "FIN-POL-014 v3.2" in prompt and "CC-FIN-100" in prompt
     assert 'exceptions {"check": "missing_po"}' in prompt and "{period_start}" not in prompt
+
+
+def test_invoice_check_answer_never_prints_nan():
+    """Third cold review: INV-20005 has no approver; the answer said 'Recorded approver: nan'."""
+    with client(FakeInterpreter("invoice_check", {"invoice_number": "INV-20005"})) as c:
+        code, r = ask(c, "Was INV-20005 properly approved?")
+    assert r["status"] == "answered" and "nan" not in r["answer"].lower().replace(".", " ").split()
+    assert {c["clause"]: c["result"] for c in r["result"]["checks"]}["3.1"] == "flag"

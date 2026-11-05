@@ -150,3 +150,89 @@ def test_relative_years_follow_today(ctx):
     assert missed_conditions("What did we spend last year?", "spend", spend, ctx, today=TODAY) == []
     assert missed_conditions("What did we spend last year?", "spend", spend, ctx, today=date(2027, 3, 1))  # 2026
     assert missed_conditions("What is our spend this year?", "spend", spend, ctx, today=date(2025, 6, 1)) == []
+
+
+# ----------------------------------------------------------------------------- third cold review: vendor status
+
+INACTIVE_NO_PO = "Which invoices from inactive vendors were also missing a PO?"
+ON_HOLD_NO_APPROVER = "Show me invoices from ON_HOLD vendors that have no approver."
+
+
+@pytest.mark.parametrize("question, tool, params", [  # the exact wrong calls the model made: status dropped
+    (INACTIVE_NO_PO, "exceptions", {"check": "missing_po"}),  # returned all 21 missing-PO invoices
+    (ON_HOLD_NO_APPROVER, "exceptions", {"check": "missing_approver"}),  # returned all 25 missing-approver invoices
+])
+def test_dropped_vendor_status_is_never_answered(question, tool, params):
+    with client(FakeInterpreter(tool, params)) as c:
+        code, r = ask(c, question)
+    assert r["status"] in ("clarification_needed", "declined")
+    assert r["result"] is None and r["evidence"]["row_count"] == 0
+
+
+@pytest.mark.parametrize("params", [{"check": "missing_po"}, {"check": "missing_po", "vendor_ids": ["V-1006"]},
+                                    {"check": "missing_po", "vendor_ids": ["V-1006", "V-1010"]}])
+def test_ambiguous_inactive_is_clarified_with_both_readings(ctx, params):
+    """'inactive' alone may mean status INACTIVE or every vendor that is not ACTIVE: clarify, whatever was chosen."""
+    with client(FakeInterpreter("exceptions", params)) as c:
+        code, r = ask(c, INACTIVE_NO_PO)
+    assert (code, r["status"]) == (200, "clarification_needed") and r["result"] is None
+    only_inactive, not_active = r["clarification"]["options"]
+    # each option is unambiguous: covered exactly by the matching vendor filter, and not by the other one
+    narrow, wide = ExceptionsParams(check="missing_po", vendor_ids=["V-1006"]), \
+        ExceptionsParams(check="missing_po", vendor_ids=["V-1006", "V-1010"])
+    assert missed_conditions(only_inactive, "exceptions", narrow, ctx, today=TODAY) == []
+    assert missed_conditions(only_inactive, "exceptions", wide, ctx, today=TODAY)
+    assert missed_conditions(not_active, "exceptions", wide, ctx, today=TODAY) == []
+    assert missed_conditions(not_active, "exceptions", narrow, ctx, today=TODAY)
+
+
+@pytest.mark.parametrize("question, params, count", [
+    (ON_HOLD_NO_APPROVER, {"check": "missing_approver", "vendor_ids": ["V-1010"]}, 0),
+    ("List invoices without an approver from vendors that are inactive or on hold.",
+     {"check": "missing_approver", "vendor_ids": ["V-1006", "V-1010"]}, 3),
+])
+def test_status_applied_with_existing_filter_is_answered(question, params, count):
+    with client(FakeInterpreter("exceptions", params)) as c:
+        code, r = ask(c, question)
+    assert (code, r["status"]) == (200, "answered") and r["result"]["count"] == count
+
+
+@pytest.mark.parametrize("question, tool, params, expressible", [
+    # a check that the question names but the parameters drop
+    ("Which invoices from vendors that are inactive or on hold have no PO?", "exceptions",
+     {"check": "non_active_vendor"}, True),
+    ("What is our spend on invoices without a PO?", "spend", {}, False),  # spend can't be limited to missing POs
+    ("How much did we spend with ON_HOLD vendors?", "spend", {}, True),  # status filter exists, not applied
+])
+def test_dropped_status_or_check_is_missed(ctx, question, tool, params, expressible):
+    model = SpendParams if tool == "spend" else ExceptionsParams
+    missed = missed_conditions(question, tool, model(**params), ctx, today=TODAY)
+    assert missed and all(m.expressible is expressible for m in missed)
+
+
+@pytest.mark.parametrize("question, tool, params", [  # no false alarms
+    ("Are there any invoices from inactive or on-hold vendors in CC-FIN-100?", "exceptions",
+     {"check": "non_active_vendor", "cost_centers": ["CC-FIN-100"]}),
+    ("Which invoices are from vendors that are not active?", "exceptions", {"check": "non_active_vendor"}),
+    ("List the invoices from vendors that are ON_HOLD or INACTIVE (non_active_vendor exceptions) and where each should "
+     "be escalated.", "exceptions", {"check": "non_active_vendor"}),
+    ("How much did we spend with ON_HOLD vendors?", "spend", {"vendor_statuses": ["ON_HOLD"]}),
+    ("What is our spend with INACTIVE vendors?", "spend", {"vendor_statuses": ["INACTIVE"]}),
+    ("Is PharmaPrint Studios an inactive vendor?", "exceptions", {"check": "non_active_vendor", "vendor_ids": ["V-1006"]}),
+    ("Which invoices are on hold because they have no approver?", "exceptions", {"check": "missing_approver"}),
+])
+def test_status_and_check_conditions_no_false_alarms(ctx, question, tool, params):
+    model = SpendParams if tool == "spend" else ExceptionsParams
+    assert missed_conditions(question, tool, model(**params), ctx, today=TODAY) == []
+
+
+@pytest.mark.parametrize("question", ["Inactive vendors: which of their invoices are missing a PO?",
+                                      "Which inactive vendors have invoices without a PO, and are inactive vendors escalated?"])
+def test_clarification_options_are_never_ambiguous_again(ctx, question):
+    """Capitalised or repeated 'inactive' must be rewritten everywhere, or the option would loop into the same question."""
+    missed = missed_conditions(question, "exceptions", ExceptionsParams(check="missing_po"), ctx, today=TODAY)
+    options = next(m.options for m in missed if m.options)
+    for option in options:
+        assert not any(m.options for m in missed_conditions(option, "exceptions", ExceptionsParams(check="missing_po"),
+                                                             ctx, today=TODAY))
+        assert "inactive" not in option.replace("INACTIVE", "").lower().replace("non-active", "")

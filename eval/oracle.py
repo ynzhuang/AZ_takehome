@@ -61,6 +61,16 @@ def expected() -> dict[str, dict]:
     no_po = df[(df["po_number"] == "") & (df["eur"] >= PO_THRESHOLD_EUR)]
     no_appr = df[df["approved_by"] == ""]
     inv8 = df.loc["INV-20008"]
+
+    def invoice_checks(n: str) -> dict[str, str]:
+        """Expected single-invoice results from the raw data: §2.1 PO, §3.1 approver, §4.1 vendor status."""
+        r = df.loc[n]
+        po = ("ok" if r["po_number"] else "flag") if r["eur"] >= PO_THRESHOLD_EUR else "not_applicable"
+        return {"2.1": po, "3.1": "ok" if r["approved_by"] else "flag", "4.1": "ok" if r["status"] == "ACTIVE" else "flag"}
+
+    def with_status(rows: pd.DataFrame, statuses: set[str]) -> pd.DataFrame:
+        return rows[rows["status"].isin(statuses)]
+
     return {
         "T1": {"top5": [(v, round(float(t), 2)) for v, t in top5.items()],
                "total_eur": round(float(df["eur"].sum()), 2),
@@ -76,6 +86,14 @@ def expected() -> dict[str, dict]:
                 "total_eur": round(float(no_po[no_po["cost_center"] == "CC-FIN-100"]["eur"].sum()), 2)},
         "T20": {"rows": set(df[df["vendor_id"] == "V-1008"]["invoice_number"]),
                 "total_eur": round(float(df[df["vendor_id"] == "V-1008"]["eur"].sum()), 2)},
+        "T27": {"rows": {"INV-20005"}, "checks": invoice_checks("INV-20005")},
+        "T28": {"rows": {"INV-20077"}, "checks": invoice_checks("INV-20077")},
+        "T29": {"readings": [set(with_status(no_po, {"INACTIVE"})["invoice_number"]),
+                             set(with_status(no_po, {"INACTIVE", "ON_HOLD"})["invoice_number"])]},
+        "T30": {"rows": set(with_status(no_appr, {"ON_HOLD"})["invoice_number"]),
+                "total_eur": round(float(with_status(no_appr, {"ON_HOLD"})["eur"].sum()), 2)},
+        "T31": {"rows": set(with_status(no_appr, {"INACTIVE", "ON_HOLD"})["invoice_number"]),
+                "total_eur": round(float(with_status(no_appr, {"INACTIVE", "ON_HOLD"})["eur"].sum()), 2)},
         "T5_category": {"total_eur": round(df[df["category"] == "Consulting"]["eur"].sum(), 2),
                         "rows": set(df[df["category"] == "Consulting"]["invoice_number"])},
         "T5_description": {"total_eur": round(df[df["description"].str.contains("consulting", case=False)]["eur"].sum(), 2),

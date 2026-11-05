@@ -42,6 +42,7 @@ CRITICAL, MAJOR = "critical", "major"
 SEVERITY_RANK = {None: 0, "minor": 1, MAJOR: 2, CRITICAL: 3}
 
 GLOBAL_FORBIDDEN = [
+    r"\bnan\b",  # a missing value printed as "nan" (third cold review)
     r"\b(is|are|was|were) (fully )?compliant\b", r"\bproperly approved\b", r"(?<!not )\bconfirmed violations?\b",
     r"\bviolat(ed|es)\b", r"\bapproval was (sufficient|valid|adequate)\b", r"\bhad (sufficient )?authority\b",
 ]
@@ -107,6 +108,21 @@ CASES = [
      "tool": "exceptions", "params": {"check": "missing_po"}, "rows": "T4"},
     {"id": "T26", "question": "What is our total spend this year?", "status": "clarification_needed or declined",
      "tool": "-", "expect_non_answer": True},  # "this year" is the current year, outside the 2025 data
+    # Third cold review: single-invoice checks reported "no issue" for a missing PO or approver (NaN values), and
+    # questions combining a vendor status with a check dropped the status. "inactive" alone is ambiguous (status
+    # INACTIVE, or every vendor that is not ACTIVE): it must be clarified, and each option must then be answered
+    # exactly. Answering any status question without the status filter is critical.
+    {"id": "T27", "question": "Was INV-20005 properly approved?", "status": "answered", "tool": "invoice_check",
+     "params": {"invoice_number": "INV-20005"}, "rows": "T27", "checks": "T27"},
+    {"id": "T28", "question": "Is INV-20077 compliant with the approval policy?", "status": "answered",
+     "tool": "invoice_check", "params": {"invoice_number": "INV-20077"}, "rows": "T28", "checks": "T28"},
+    {"id": "T29", "question": "Which invoices from inactive vendors were also missing a PO?",
+     "status": "clarification_needed", "tool": "clarify", "alt_tools": ["spend", "exceptions"], "follow_through": "T29"},
+    {"id": "T30", "question": "Show me invoices from ON_HOLD vendors that have no approver.", "status": "answered",
+     "tool": "exceptions", "params": {"check": "missing_approver", "vendor_ids": ["V-1010"]}, "rows": "T30"},
+    {"id": "T31", "question": "List invoices without an approver from vendors that are inactive or on hold.",
+     "status": "answered", "tool": "exceptions", "params": {"check": "missing_approver", "vendor_ids": ["V-1006", "V-1010"]},
+     "rows": "T31"},
 ]
 
 # --------------------------------------------------------------------------- checks
@@ -151,6 +167,8 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
             fail("status", CRITICAL, "interpretation", f"answered instead of {want}")
         elif want == "answered" and r["status"] == "clarification_needed":
             fail("status", MAJOR, "interpretation", "unnecessary clarification")
+        elif want == "clarification_needed" and r["status"] == "declined":
+            fail("status", MAJOR, "interpretation", "declined instead of clarifying (no wrong figure shown)")
         elif want == "answered" and r["status"] == "declined":
             fail("status", MAJOR, "interpretation", "unnecessary decline (over-refusal; no wrong figure shown)")
         elif r["status"] == "error":
@@ -201,11 +219,11 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
             fail("figures", CRITICAL, "system", f"top5 {got} != {exp['T1']['top5']}")
         if abs(res.get("total_eur", 0) - exp["T1"]["total_eur"]) > 0.01:
             fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp['T1']['total_eur']}")
-    if key in ("T2", "T4", "T11", "T17", "T20") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
+    if key in ("T2", "T4", "T11", "T17", "T20", "T30", "T31") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
         fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp[key]['total_eur']}")
     if key == "T11" and res.get("also_missing_po") != exp["T11"]["also_missing_po"]:
         fail("figures", CRITICAL, "system", f"also_missing_po {res.get('also_missing_po')}")
-    if case["id"].startswith("T3") and res.get("required_role") != exp["T3"]["role"]:
+    if case["id"] in ("T3", "T3-v") and res.get("required_role") != exp["T3"]["role"]:
         fail("figures", CRITICAL, "system", f"role {res.get('required_role')} != {exp['T3']['role']}")
     if key == "T6":
         if abs(res.get("amount_eur", 0) - exp["T6"]["amount_eur"]) > 0.01 or res.get("required_role") != exp["T6"]["role"]:
@@ -213,6 +231,12 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
         auth = [c for c in res.get("checks", []) if c["clause"] == "3"]
         if not auth or auth[0]["result"] != "cannot_determine":
             fail("unsupported_conclusion", CRITICAL, "system", f"authority check: {auth}")
+
+    if case.get("checks"):  # single-invoice policy checks must match the raw data (a missed flag is an overclaim)
+        got = {c_["clause"]: c_["result"] for c_ in res.get("checks", [])}
+        for clause, expected in exp[case["checks"]]["checks"].items():
+            if got.get(clause) != expected:
+                fail("invoice_check", CRITICAL, "system", f"§{clause} {got.get(clause)} (expected {expected})")
 
     # Citations: every clause and row exists; row EUR amounts match the oracle
     bad_clauses = [c["id"] for c in ev["clauses"] if c["id"] not in exp["_clause_ids"]]
@@ -331,6 +355,28 @@ def clarification_follow_through(c, run: dict, exp: dict) -> list[dict]:
     return findings
 
 
+def readings_follow_through(c, run: dict, readings: list[set]) -> list[dict]:
+    """Each option of a clarification is asked as-is: together they must cover every reading, each answered with
+    exactly that reading's invoices. A wrong answer is critical; an option that is not answered is major."""
+    findings, covered = [], set()
+    for opt in (run.get("clarification") or {}).get("options") or []:
+        body = c.post("/ask", json={"question": opt}).json()
+        rows = {x["invoice_number"] for x in body["evidence"]["rows"]}
+        match = next((i for i, reading in enumerate(readings) if rows == reading), None)
+        if body["status"] != "answered":
+            findings.append({"check": "clarification.follow_through", "severity": MAJOR, "layer": "interpretation",
+                             "detail": f"option {opt!r} -> {body['status']}"})
+        elif match is None:
+            findings.append({"check": "clarification.follow_through", "severity": CRITICAL, "layer": "system",
+                             "detail": f"option {opt!r} answered with {len(rows)} invoices matching no reading"})
+        else:
+            covered.add(match)
+    if covered != set(range(len(readings))):
+        findings.append({"check": "clarification.follow_through", "severity": MAJOR, "layer": "interpretation",
+                         "detail": f"options covered readings {sorted(covered)} of {len(readings)}"})
+    return findings
+
+
 def tools_level(ctx, exp) -> list[dict]:
     """Level 1: canonical parameters straight into the tools (no LLM)."""
     from app.service import AssistantService  # noqa: E402
@@ -424,9 +470,11 @@ def main() -> int:
                              "answer": body["answer"], "latency_ms": int((time.monotonic() - t) * 1000),
                              "usage": body["interpretation"].get("usage"),
                              "assumptions": body["assumptions"], "limitations": body["limitations"],
+                             "clarification": body.get("clarification"),
                              "findings": findings})
             # consistency across runs: same meaning (status, tool, applied params), same templated answer
-            sig = ({str(r["status"] != "answered") for r in runs} if case.get("expect_non_answer") else
+            sig = ({str(r["status"]) for r in runs} if case.get("follow_through") else
+                   {str(r["status"] != "answered") for r in runs} if case.get("expect_non_answer") else
                    {json.dumps([r["status"], r["tool"], semantic_params(r["params"])], sort_keys=True) for r in runs})
             answers = {r["answer"] for r in runs if r["status"] == "answered"}
             consistency = [] if len(sig) == 1 and len(answers) <= 1 else [
@@ -434,6 +482,8 @@ def main() -> int:
                  "detail": f"{len(sig)} distinct interpretations / {len(answers)} distinct answers across runs"}]
             if case["id"] == "T5":
                 consistency += clarification_follow_through(c, runs[0], exp)
+            elif case.get("follow_through"):
+                consistency += readings_follow_through(c, runs[0], exp[case["follow_through"]]["readings"])
             worst = max((x["severity"] for r in runs for x in r["findings"] + consistency), key=SEVERITY_RANK.get, default=None)
             e2e.append({"case": case, "runs": runs, "consistency": consistency, "worst": worst})
 
