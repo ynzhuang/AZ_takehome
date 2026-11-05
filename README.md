@@ -2,12 +2,44 @@
 
 A prototype that answers finance analysts' questions about 2025 invoices and the procurement policy (FIN-POL-014 v3.2). Every answer shows exactly what it is based on: the invoice rows, the policy clauses, the exchange rates, the assumptions it made and what it cannot tell you.
 
+**Status:** prototype complete (backend, frontend, tests and evaluation).
+
 **Stack:** FastAPI backend, React + TypeScript (Vite) frontend. The LLM runs through OpenRouter; the model is configurable.
 
 **More detail:**
 - [`docs/design.md`](docs/design.md): problem, data and policy analysis, evaluation design
 - [`ai/LOG.md`](ai/LOG.md): how AI was used, my decisions, issues and fixes
 - [`eval/results/`](eval/results/): every evaluation report
+
+## Write-up
+
+### 1. What I built and what I left out
+
+I focused on the Finance problem rather than building a general chatbot. The LLM interprets questions and selects tools, while calculations, conversion and policy checks are deterministic. An answer can sound correct but still be wrong if the data or evidence is incorrect. I prioritized core functions, evidence and evaluation. I left out authentication, databases, agent workflows and deployment due to the time limit.
+
+### 2. How I evaluated it
+
+For evaluation, I focused on three things: whether the LLM understands the question, whether the results and evidence are correct, and whether Finance users can understand the answers and limitations. I used independently calculated expected answers and tested ambiguity, missing information and failures. I ran 11 cases, 3 runs each, with 2 models, and no critical errors were reported. But this is still a small test set and doesn't prove production readiness.
+
+### 3. What production would need
+
+For production with 200 Finance users, I would consider role-based access control (since different users may have different permissions), real data integration, and audit trails under policy §8.2. I would also collect human-labeled examples to evaluate and improve performance. If policy documents become large and complex, I would consider RAG with a vector database. Production would also need policy versioning, data validation, CI/CD, and monitoring of latency, errors and costs. Before deployment, I would run a pilot with Finance users to check accuracy, missed exceptions and usability.
+
+### 4. Optional enhancement: evaluation set and scoring script
+
+For the optional enhancement, I chose the evaluation set and scoring script because I think measuring accuracy is more important than adding features at this stage. I wanted to check the full process, including tool selection, parameters, calculations and evidence, not just the final answer. I also tested ambiguity and failure cases to see if the assistant asks for clarification or stops instead of guessing. I used independently calculated answers rather than another LLM as a judge. The results are in [`eval/results/`](eval/results/). I didn't choose additional guardrails or agentic routing because the current design already limits the LLM to predefined tools and deterministic calculations. I wanted to evaluate this approach first.
+
+## Time spent and next steps
+
+- **Time spent:** _[to be filled in]_
+- **Next steps:**
+  1. Policy-change and dirty-data cases in the evaluation (T14, T15, defined in design §3).
+  2. A persistent audit log.
+  3. Routing for questions that need several tools, shown explicitly to the user.
+  4. Ingestion quarantine for bad data.
+  5. More evaluation questions, collected from real analyst questions.
+
+## Screenshots
 
 | Start-up summary (no LLM) | Invoice check: evidence and limitations | LLM unavailable: fails closed |
 |---|---|---|
@@ -181,86 +213,6 @@ HTTP status codes:
 - **Run 1** flagged 4 "major" consistency findings. These were a **checker issue**: the check compared LLM-written wording rather than meaning. After the fix, run 2 and run 3 are clean.
 - A stub dry run showed the scorer does catch failures. It also found a real defect: a figure appeared in the answer text but not in the result. That defect was fixed.
 - **Caveat:** 11 questions over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
-
-## Write-up
-
-### 1. What I built, what I left out, and why
-
-**Priority:** correct, traceable answers over coverage. In finance controls, a confident wrong answer, or an unsupported "this invoice is compliant", costs more than a question the tool can't answer.
-
-**Built:**
-- An LLM that only interprets the question, deterministic tools, and answers from fixed templates.
-- A structured interpretation and full evidence in every response.
-- Explicit clarify and decline paths.
-- A UI that shows the key findings, then the limitations, then the evidence.
-- From the brief's optional items, I chose the **evaluation set with a scoring script**. Basic guardrails (clarify or decline) come from the design itself.
-
-**Left out:**
-- Conversation memory: clarification options are complete questions instead.
-- Questions that need several tools at once (for example, "Spain spend from inactive vendors without a PO"). These are declined.
-- Analyses outside the 7 tools.
-- Checks the data cannot support: approver authority, segregation of duties, credit-note matching, blanket POs and emergency exceptions. These are reported as **cannot determine**, never as passed.
-- Auth, deployment, Docker, a persistent audit log, quarantine for dirty data, and policy retrieval for longer policies.
-
-**Trade-off:** fixed templates make answers rigid, and the tools limit what can be asked. In exchange, any figure in an answer can be traced to code and to data rows.
-
-### 2. How I'd evaluate it
-
-The same approach as now, at larger scale (details in design §3):
-1. **Independent expected answers.** Compute them from the raw data without app code, with categorised questions:
-   - data, data + join, policy, data + policy;
-   - ambiguous, unanswerable, adversarial;
-   - reworded versions of each.
-2. **Score each layer separately** so failures can be traced: the LLM's interpretation against the expected tool and parameters, the tools against the expected answers, and the full answer end to end.
-3. **Catch hallucinations mostly with automatic checks:**
-   - figures within EUR 0.01;
-   - evidence rows exactly equal the expected rows;
-   - every cited invoice and clause exists;
-   - every EUR figure in the text appears in the result;
-   - required limitations are present;
-   - forbidden claims are absent ("compliant", naming an approver as authorised).
-
-   Use an LLM judge only where wording matters, calibrated against analyst labels.
-4. **Gate releases:** zero critical errors, worst of N runs, on every change to the prompt, model, policy or data.
-5. **Monitor in production:**
-   - sampled expert review;
-   - analyst feedback and overrides;
-   - decline and clarification rates;
-   - error rate and latency.
-
-### 3. What production would need
-
-- **Users and access:**
-  - SSO and role-based access (analyst, auditor).
-  - Row-level access by entity or cost centre.
-  - The LLM never sees invoice data, which limits what goes to the provider. The provider contract and data region still need agreeing.
-- **Real data:**
-  - Read-only views from the ERP or data warehouse instead of CSVs.
-  - Validation at ingestion that quarantines bad rows and reports data quality in answers.
-  - Data that turns "cannot determine" into actual checks: vendor status history, a delegation-of-authority matrix mapping approvers to roles (§3), requesters (§7), a PO master (§2.1, §2.3) and the Exception Register (§9).
-- **Audit trail (§8.2):**
-  - For each answer, keep an immutable record of the user, question, interpretation, tool call, data snapshot hash, policy version, FX file version, prompt and model version, and the response. Keep it for 10 years (§8.1).
-  - Answers are deterministic once interpreted, so any answer can be reproduced from its record.
-- **Policy changes:**
-  - Versioned policies with effective dates; check each invoice against the policy in force on its date.
-  - A rule registry.
-  - Clause retrieval once policies no longer fit in the prompt.
-- **Reliability:**
-  - Timeouts (already in place), retries with backoff, and a fallback model.
-  - Rate limits.
-  - Monitoring, and the evaluation as a CI gate.
-  - A scheduled ECB rate import with gap checks.
-- **Cost:** measured at about USD 0.0006 per question with Haiku, or USD 0.00005 with gpt-6-luna. Assuming 200 users ask 20 questions per working day, that is about 4,000 questions a day: roughly **USD 2.40 a day, or about USD 50 a month, with Haiku**. Hosting, data integration and people will cost far more than the LLM. Caching the fixed system prompt (about 5.5k tokens) would reduce it further.
-
-### Time spent and next steps
-
-- **Time:** the commit history covers about 3¼ hours: design notes from 00:19 UTC, then design review, backend, frontend and evaluation, ending at 03:35 UTC on 2026-11-05. **[Confirm or adjust: time spent before the first commit is not included.]**
-- **Next steps:**
-  1. Policy-change and dirty-data cases in the evaluation (T14, T15, defined in design §3).
-  2. A persistent audit log.
-  3. Routing for questions that need several tools, shown explicitly to the user.
-  4. Ingestion quarantine for bad data.
-  5. More evaluation questions, collected from real analyst questions.
 
 ## Data
 
