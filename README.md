@@ -254,7 +254,7 @@ The same approach as now, at larger scale (details in design §3):
 
 ### Time spent and next steps
 
-- **Time:** the commit history covers about 3.5 hours: design notes from 00:19 UTC, then design review, backend, frontend and evaluation, ending around 03:45 UTC on 2026-11-05. **[Confirm or adjust: time spent before the first commit is not included.]**
+- **Time:** the commit history covers about 3¼ hours: design notes from 00:19 UTC, then design review, backend, frontend and evaluation, ending at 03:35 UTC on 2026-11-05. **[Confirm or adjust: time spent before the first commit is not included.]**
 - **Next steps:**
   1. Policy-change and dirty-data cases in the evaluation (T14, T15, defined in design §3).
   2. A persistent audit log.
