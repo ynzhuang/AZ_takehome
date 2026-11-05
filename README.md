@@ -34,7 +34,7 @@ For the optional enhancement, I chose the evaluation set and scoring script beca
 
 ## Time spent and next steps
 
-- **Time spent:** _[to be filled in]_
+- **Time spent:** about 4.5 hours, including planning, implementation and manual testing.
 - **Next steps:**
   1. Policy-change and dirty-data cases in the evaluation (T14, T15, defined in design §3).
   2. A persistent audit log.
