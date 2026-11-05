@@ -1,39 +1,72 @@
-## 1 Problem and objective
-### 1. What is the business problem?
+## 1. Problem and objective
 
-The Finance team needs to review invoice data against procedure policy, including approval, purchase, vendor, and etc.  The goal is to build a chatbot for analyst to use to check across multiple sources and determine which invoice need further action. 
+### 1.1 Business problem
 
-Users could have different access and questions based on their role. For analyst, questions may include calculations. for approvers, questions may include what invoice need to approve. for auditor, questions may ask invoice need further validation.
+Finance analysts spend significant time cross-referencing vendor invoices against the vendor master and the procurement policy (FIN-POL-014 v3.2): approvals, vendor status, and spend thresholds. The results feed control reporting (e.g. maverick spend is reported quarterly to the Finance Controls Committee, §2.2), so errors have control consequences, not just analytical ones.
 
-The chatbot is a decision-support tool and should not automatically make decisions over human.
+**Objective:** a decision-support assistant for **finance analysts**. For each question, the assistant returns exactly one of:
+1. an **answer** whose figures are reproducible and whose basis is visible: invoice rows, policy clauses, FX rates, and stated assumptions;
+2. a **clarification question**, when the question is materially ambiguous; or
+3. an explicit **"cannot be answered from available data"**, with the reason.
 
-### 2. How to evaluate the correctness of the answer?
+The assistant does not approve, reject, or certify compliance. It flags items for human review.
 
-a. Numerical correctness: Currency conversion has to be correct using defined conversion method. Results should be traceable to the underlying invoice records and conversion method.
+### 1.2 Prototype scope (3–4 hour time box)
 
-b. Interpretation correctness: The system must answer the question the analyst intended. For example, "consulting spend" could refer to vendors classified as consulting companies or invoices describing consulting services. If unsure about user's intent, then need to prompt user to answer follow up question to clarify
+| Question type | Example | Sources |
+|---|---|---|
+| Data aggregation | "What are our top 5 vendors by total spend in 2025?" | invoices |
+| Data + vendor join | "What is our total spend with vendors based in Spain?" | invoices, vendor master |
+| Policy lookup | "Who is allowed to approve an invoice of EUR 60,000?" | policy |
+| Data + policy | "Which invoices of EUR 1,000 or more have no PO, and who should they be flagged to?" (§2.1–2.2) | invoices, vendor master, policy |
 
-c. Evidence correctness: the system need to distinguish what data shows and what policy requires. For example, an invoice with approver does not mean the approver has sufficient authority. When the data is insufficient to support conclusion, the assistant should explain to the user instead of assume an answer.
+Also in scope: `GET /summary`, which is computed deterministically and works without the LLM.
 
-Each response, the assistant need to use deterministic functions, records, policy clauses to draw the conclusion and let the user know. 
+Out of scope (documented, not built): other personas (approver, auditor), authentication and access control, deployment, automated decisions, and policy rules the data cannot support (see Section 2).
 
-### 3. What are the most consequential failure modes?
+### 1.3 Definitions and decision rules
 
-a. incorrect financial calculations, for example, aggregating different currencies without conversion, selecting the wrong invoices, or mishandling approval thresholds.
+- **Spend** = net invoiced amount: the sum of invoice amounts, including credit notes (negative amounts) and all invoices regardless of PO, approver, or vendor status. Payment data does not exist, so "spend" never means "paid".
+- **Currency:** convert to EUR at the ECB reference rate on the invoice date (§5.1). When the ECB publishes no rate for that date (weekends, TARGET holidays), use the most recent prior published rate. Rates are stored in a versioned local table with source and retrieval date, never fetched at question time. Each converted amount is rounded to 2 decimal places, and thresholds are compared against that value.
+- **Ambiguity:** ask for clarification when the plausible interpretations select different invoice sets or lead to a different policy conclusion. Example: "consulting spend" may mean the vendor category *Consulting* or descriptions containing "consulting", and these are disjoint sets in this data. Otherwise, answer and state the assumption.
 
-b. incorrect interpretation. For example, the assistant uses the definition or filters but got a correct result. This still considered failure.
+### 1.4 Consequential failure modes (by severity)
 
-c. an unsupported compliance conclusion. For example, the assistant might claim that an invoice was properly approved even though the dataset does not contain the approver's organizational role.
+**Critical**
+1. **Unsupported compliance conclusion.** Example: stating an invoice was "properly approved" when the data has no approver role, requester, or exception register.
+2. **Wrong figure.** Causes: mixed currencies summed, wrong rows selected, credit notes mishandled, or the wrong approval tier near a threshold.
+3. **Invalid evidence.** A cited invoice or clause does not exist or does not support the claim, or a number in the answer text differs from the computed result.
 
-### 4. Evaluation metrics?
+**High**
 
-a. LLM: I would test whether the model correctly interprets different questions, identifies the appropriate data or policy operation, extracts filters, and recognizes ambiguous requests.
+4. **Wrong interpretation.** Wrong filter or definition, including a correct number reached for the wrong reason, or a silent assumption on a material ambiguity.
+5. **No abstention.** Answering a question outside the data or policy (e.g. 2024 spend, generic approval limits) instead of declining.
 
-b. system evaluation: use a small set of reference questions with independently verified expected results. Including but not limit to numerical accuracy, policy interpretation, evidence attribution, and missing info.
+**Operational**
 
-c. product evaluation. A technically correct answer is not necessarily useful to a Finance analyst. I would assess whether the interface clearly presents the answer, supporting records, relevant policy clauses, and limitations.
+6. **LLM or provider failure** (timeout, invalid tool call). The system fails closed with an explicit error and never returns a partial, unsupported answer. `/summary` is unaffected.
 
-This is a prototype, so i will use synthetic data to test. for a real deployment, I would extend this evaluation through expert review and a controlled pilot alongside the existing manual workflow. I would measure agreement with analyst decisions, task completion, time saved, false flags, missed exceptions, and critical errors.
+### 1.5 Success criteria (prototype)
+
+These are measured on a small labelled evaluation set if time permits: 8–10 questions covering the four question types, plus at least one ambiguous and one unanswerable question. Expected answers are computed independently of the application code, and the scoring script runs each question 3 times.
+
+| Priority | Area | Metric | Target |
+|---|---|---|---|
+| 1 | LLM interpretation | Correct route (data / policy / both), filters, and the answer-vs-clarify-vs-decline decision | 100% on the 3 brief examples; ≥ 90% overall |
+| 2 | Numerical accuracy | Figures match expected values within ± EUR 0.01 | 100% |
+| 3 | Evidence validity | Every cited invoice ID and clause exists, and the cited rows equal the rows used in the computation | 100% |
+| 3 | Answer consistency | Every figure in the answer text matches the computed result | 100% |
+| 4 | Unsupported conclusions | Answers asserting compliance or authority that the data cannot establish | 0 |
+| — | Reproducibility | Same figures and evidence across 3 runs | 100% |
+| — | Failure handling | With the LLM unavailable, `/ask` returns an explicit error and `/summary` still loads | Pass |
+
+Each answer in the UI shows its evidence rows, policy clauses, FX rates used, and assumptions or limitations.
+
+### 1.6 Production considerations (not built)
+
+- **Pilot:** run alongside the existing manual review and measure agreement with analysts, false flags, missed exceptions, critical errors, and time saved.
+- **Audit trail (§8.2):** log the question, interpretation, tool calls, and the data, policy, FX, prompt, and model versions for each answer.
+- **Operations:** access control, latency, and cost per question at roughly 200 users.
 
 ## 2. data
 
