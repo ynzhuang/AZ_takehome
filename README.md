@@ -10,6 +10,7 @@ A prototype that answers finance analysts' questions about 2025 invoices and the
 - [`docs/design.md`](docs/design.md): problem, data and policy analysis, evaluation design
 - [`ai/LOG.md`](ai/LOG.md): how AI was used, my decisions, issues and fixes
 - [`eval/results/`](eval/results/): every evaluation report
+- [`eval/manual_review.md`](eval/manual_review.md): my manual test questions and results
 
 ## Write-up
 
@@ -210,7 +211,7 @@ HTTP status codes:
 - Failures are injected: timeout, malformed tool call, invalid parameters.
 - Follow-up cases send the earlier question first and pass the last answered turn as context, as the frontend does. T18 checks that a self-contained question does not inherit filters; T19 checks that a follow-up sent without context is clarified.
 
-**Results, final run (run 8):** 14 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, and follow-ups T17–T19) and 3 injected failures.
+**Results, last run after a code change (run 8):** 14 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, and follow-ups T17–T19) and 3 injected failures.
 
 | Model (OpenRouter) | Critical errors | Cases with no findings | Tools level | Failure injection | Median latency | Median tokens per question | Median cost per question |
 |---|---|---|---|---|---|---|---|
@@ -221,6 +222,8 @@ HTTP status codes:
 - **Run 1** flagged 4 "major" consistency findings. These were a **checker issue**: the check compared LLM-written wording rather than meaning. After the fix, run 2 and run 3 are clean.
 - **Manual testing found a bug the evaluation had missed:** for "top 5 vendors", the notes (non-active invoices, credit notes, converted invoices) described all 140 invoices instead of the 85 invoices of the vendors shown. The figures were correct. A new check that notes must match the evidence rows reported critical errors in T1 and T1-v on the unfixed code (run 4). After the fix, run 5 is clean. Runs 1–3 did not include this check.
 - **Manual testing found a second bug the evaluation had missed:** a follow-up ("How about just the invoices from CC-FIN-100?") was interpreted without the previous question and returned all CC-FIN-100 spend instead of the 10 missing-PO invoices. On the unfixed code, the new two-turn case T17 failed for both models (run 6). After adding one-turn context, the first attempt (run 7) fixed T17 but caused Haiku to make two tool calls (T4) and invent tool names (T19). Enforcing a single tool call and simplifying the prompt fixed both. Run 8 is clean.
+- **Verification re-run (run 9, no code changes):** Haiku was again 14/14 with 0 critical. gpt-6-luna had 0 critical but one major finding (13/14): in T5, one rewritten clarification option, asked again, led to a second clarification instead of an answer. This shows run-to-run variation.
+- [Manual review](eval/manual_review.md) with Haiku: 19 questions; both bugs above were found this way.
 - A stub dry run showed the scorer does catch failures. It also found a real defect: a figure appeared in the answer text but not in the result. That defect was fixed.
 - **Caveat:** 11 questions over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
 
