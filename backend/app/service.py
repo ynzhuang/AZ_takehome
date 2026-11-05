@@ -116,8 +116,13 @@ class AssistantService:
             return AskResponse(**base, status="declined", interpretation=interp,
                                answer=templates.DECLINE_TEXT["outside_data_period"], limitations=reasons)
         if all(m.expressible for m in missed):
+            if ambiguous := next((m for m in missed if m.options), None):  # e.g. "inactive": offer both readings
+                return AskResponse(**base, status="clarification_needed", interpretation=interp, answer=ambiguous.reason,
+                                   clarification=Clarification(question=ambiguous.reason, options=list(ambiguous.options)),
+                                   limitations=reasons)
             text = ("Part of your question was not applied, so no answer is given: " + "; ".join(reasons)
-                    + ". Please rephrase it, for example by naming the vendor, country or cost centre explicitly.")
+                    + ". Please rephrase it, for example by naming the vendor, vendor status, country or cost centre "
+                      "explicitly.")
             return AskResponse(**base, status="clarification_needed", interpretation=interp, answer=text,
                                clarification=Clarification(question=text, options=[]), limitations=reasons)
         return AskResponse(**base, status="declined", interpretation=interp,

@@ -70,7 +70,8 @@ def build_user_message(question: str, context: PreviousTurn | None) -> str:
 
 
 def build_system_prompt(data: Dataset, policy: Policy, today: date | None = None) -> str:
-    vendors = ", ".join(f"{i} = {n}" for i, n in zip(data.vendors["vendor_id"], data.vendors["vendor_name"]))
+    vendors = ", ".join(f"{i} = {n} ({st})" for i, n, st in
+                        zip(data.vendors["vendor_id"], data.vendors["vendor_name"], data.vendors["status"]))
     catalog = "\n".join(f"  - {k}: {vendors if k == 'vendor_ids' else ', '.join(v)}" for k, v in data.catalog().items())
     return PROMPT_PATH.read_text(encoding="utf-8").format(
         today=(today or date.today()).isoformat(),

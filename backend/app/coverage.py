@@ -9,9 +9,9 @@ conditions it can recognise from the data catalog and checks that the parameters
 - the tool cannot apply the condition at all (amount or count thresholds, approvers, specific invoice numbers,
   a country or currency filter on an exception list) or the year is outside the data -> decline.
 
-Recognised: vendor names and IDs, countries, cost centres, non-EUR currencies, approvers, invoice numbers,
-amount/count thresholds, years (including "this year"), credit notes, payments, and rankings by a dimension the
-tool does not group by. Anything else (e.g. "late invoices") still depends on the interpreter's prompt.
+Recognised: vendor names and IDs, vendor statuses, the missing-PO and missing-approver checks, countries, cost
+centres, non-EUR currencies, approvers, invoice numbers, amount/count thresholds, years (including "this year"), credit
+notes, payments, and rankings by a dimension the tool does not group by. Anything else (e.g. "late invoices") still depends on the interpreter's prompt.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ class Missed:
     reason: str  # shown to the analyst
     expressible: bool  # the chosen tool has a filter for it (rephrasing can help)
     out_of_period: bool = False
+    options: tuple[str, ...] = ()  # complete rewritten questions, when the condition itself is ambiguous
 
 
 _WORD_OPS = (r"at or above|at least|more than|greater than|in excess of|exceeding|over|above|"
@@ -60,6 +61,27 @@ _RANKING_FORMS = [r"(?:which|what)\s+(?:top\s+)?(?:\d+\s+)?(?:DIM)", r"(?:by|per
                   r"rank(?:ing|ed|s)?\s+(?:of\s+)?(?:the\s+|our\s+)?(?:DIM)"]
 _RANKINGS = {dim: [re.compile(r"(?<![\w-])" + form.replace("DIM", words) + r"(?![\w-])") for form in _RANKING_FORMS]
              for dim, words in _DIMENSIONS.items()}
+# Vendor status (third cold review: "inactive vendors ... missing a PO" was answered for all vendors). Only status
+# words that describe vendors count: "on hold" alone can mean an invoice held under §3.1. Lowercase "inactive" alone
+# is ambiguous (status INACTIVE, or every vendor that is not ACTIVE); the status code "INACTIVE" or "inactive status"
+# is not.
+_STATUS_WORD = r"(?:inactive|on[ _-]hold|non[ -]?active|not active)"
+_STATUS_LIST = rf"{_STATUS_WORD}(?:\s*(?:,|/|\bor\b|\band\b)\s*{_STATUS_WORD})*"
+_VENDOR_WORD = r"(?:vendors?|suppliers?)"
+_STATUS_PHRASES = [
+    re.compile(rf"(?<![\w-]){_STATUS_LIST}\)?(?:[- ]status)?\s+{_VENDOR_WORD}(?![\w-])"),
+    re.compile(rf"(?<![\w-]){_VENDOR_WORD}\s+(?:(?:that|which|who)\s+)?(?:are|is|were|was)\s+(?:currently\s+)?"
+               rf"{_STATUS_LIST}(?![\w-])"),
+    re.compile(rf"(?<![\w-])(?:status(?:es)?\s+(?:of\s+)?{_STATUS_LIST}|{_STATUS_LIST}\s+status)(?![\w-])"),
+]
+# Checks the question names: "no PO" / "without an approver" must be the exception list's check.
+_CHECK_PHRASES = {
+    "missing_po": (re.compile(r"(?<![\w-])(?:no|without|missing|lacking)\s+(?:an?\s+|the\s+|any\s+)?(?:po|purchase order)s?"
+                              r"(?![\w-])|(?<![\w-])(?:missing|no)[- _]po(?![\w-])"), "invoices without a PO"),
+    "missing_approver": (re.compile(r"(?<![\w-])(?:no|without|missing|lacking)\s+(?:an?\s+|the\s+|any\s+)?"
+                                    r"(?:approver|approval)s?(?![\w-])|(?<![\w-])missing[- _]approver(?![\w-])"),
+                         "invoices without an approver"),
+}
 _RELATIVE_YEARS = {"this year": 0, "current year": 0, "year to date": 0, "ytd": 0, "next year": 1,
                    "last year": -1, "previous year": -1}
 
@@ -103,6 +125,61 @@ def _first_outside(pattern: re.Pattern, q: str, allowed: re.Pattern) -> str | No
     return next((m.group(0) for m in pattern.finditer(q) if not any(a <= m.start() < b for a, b in spans)), None)
 
 
+def _status_misses(question: str, tool: str, params: Any, ctx: Context) -> list[Missed]:
+    """Vendor-status conditions must be expressed with the existing filters: vendor_statuses for spend, the vendor IDs
+    with that status for exception lists. Ambiguous "inactive" is clarified with both readings as options."""
+    q = question.lower()
+    spans = [m.span() for p in _STATUS_PHRASES for m in p.finditer(q)]
+    if not spans:
+        return []
+    texts = [question[a:b] for a, b in spans]
+    joined = " ".join(t.lower() for t in texts)
+    inactive, on_hold = "inactive" in joined, re.search(r"on[ _-]hold", joined) is not None
+    not_active = re.search(r"non[ -]?active|not active", joined) is not None
+    vendors = ctx.data.vendors
+    names = lambda statuses: ", ".join(vendors.loc[vendors["status"].isin(statuses), "vendor_name"])  # noqa: E731
+    if not_active or (inactive and on_hold):
+        wanted = {"INACTIVE", "ON_HOLD"}
+    elif on_hold:
+        wanted = {"ON_HOLD"}
+    elif any("INACTIVE" in t or "status" in t.lower() for t in texts):
+        wanted = {"INACTIVE"}
+    else:  # lowercase "inactive" alone: ask which reading is meant
+        # Every "inactive" (any case, e.g. "Inactive vendors…") is rewritten, so no option is ambiguous again;
+        # the status code "INACTIVE" is kept as it is.
+        rewrite = lambda words: re.sub(r"(?<![\w-])inactive(?![\w-])",  # noqa: E731
+                                       lambda m: m.group(0) if m.group(0) == "INACTIVE" else words, question, flags=re.I)
+        return [Missed("inactive", f"'inactive' can mean vendors with status INACTIVE ({names({'INACTIVE'})}), or "
+                                   f"every vendor that is not ACTIVE (INACTIVE or ON_HOLD: "
+                                   f"{names({'INACTIVE', 'ON_HOLD'})}). Which do you mean?", True,
+                       options=(rewrite("INACTIVE"), rewrite("non-active (INACTIVE or ON_HOLD)")))]
+    ids = set(vendors.loc[vendors["status"].isin(wanted), "vendor_id"])
+    label = " or ".join(sorted(wanted))
+    if tool == "spend":
+        covered = (set(params.vendor_statuses) == wanted or set(params.vendor_ids) == ids
+                   or (params.group_by == "vendor_status" and not params.top_n))
+    else:
+        covered = set(params.vendor_ids) == ids or (params.check == "non_active_vendor" and wanted == {"INACTIVE", "ON_HOLD"})
+    if covered:
+        return []
+    return [Missed(texts[0], f"'{texts[0]}' is in the question but no filter for vendor status {label} was applied", True)]
+
+
+def _check_misses(question: str, tool: str, params: Any) -> list[Missed]:
+    """A check named in the question ("no PO", "without an approver") must be the exception list's check."""
+    q = question.lower()
+    named = [(check, m.group(0), label) for check, (rx, label) in _CHECK_PHRASES.items() if (m := rx.search(q))]
+    misses = []
+    for check, text, label in named:
+        if tool == "exceptions" and getattr(params, "check", None) == check:
+            continue
+        if tool == "exceptions" and len(named) == 1:
+            misses.append(Missed(text, f"'{text}' is in the question but this list does not apply it", True))
+        else:
+            misses.append(Missed(text, f"'{text}': this answer can't be limited to {label}", False))
+    return misses
+
+
 def missed_conditions(question: str, tool: str, params: Any, ctx: Context, today: date | None = None) -> list[Missed]:
     """Conditions recognised in the question that the parameters do not express. Empty list = covered."""
     if tool not in DATA_TOOLS:
@@ -120,11 +197,16 @@ def missed_conditions(question: str, tool: str, params: Any, ctx: Context, today
         elif value not in (getattr(params, param) or []):
             misses.append(Missed(found, f"'{found}' is in the question but no {label} filter for it was applied", True))
 
+    vendor_named = False
     for vendor_id, name in zip(ctx.data.vendors["vendor_id"], ctx.data.vendors["vendor_name"]):
         aliases = {vendor_id.lower(), name.lower(), name.split()[0].lower()}
         found = next((a for a in sorted(aliases, key=len, reverse=True) if len(a) >= 5 and _mentioned(q, a)), None)
         if found:
+            vendor_named = True
             need(f"{name} ({vendor_id})", "vendor_ids", vendor_id, "vendor")
+    if not vendor_named:
+        misses += _status_misses(question, tool, params, ctx)
+    misses += _check_misses(question, tool, params)
     for country in catalog["countries"]:
         if _mentioned(q, country.lower()):
             need(country, "countries", country, "country")

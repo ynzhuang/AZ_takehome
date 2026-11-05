@@ -20,17 +20,17 @@ I focused on the Finance problem rather than building a general chatbot. The LLM
 
 ### 2. How I evaluated it
 
-For evaluation, I focused on three things: whether the LLM understands the question, whether the results and evidence are correct, and whether Finance users can understand the answers and limitations. I used independently calculated expected answers and tested ambiguity, missing information and failures. I ran 21 cases, 3 runs each, with 2 models, and no critical errors were reported. But this is still a small test set and doesn't prove production readiness.
+For evaluation, I focused on three things: whether the LLM understands the question, whether the results and evidence are correct, and whether Finance users can understand the answers and limitations. I used independently calculated expected answers and tested ambiguity, missing information and failures. I ran 26 cases, 3 runs each, with 2 models, and no critical errors were reported. But this is still a small test set and doesn't prove production readiness. Some evaluation questions also appear as examples in the system prompt, so those cases are not fully independent; the unscripted cold-review questions are.
 
 ### 3. What production would need
 
 For production with 200 Finance users, I would consider role-based access control (since different users may have different permissions), real data integration, and audit trails under policy §8.2. I would also collect human-labeled examples to evaluate and improve performance. If policy documents become large and complex, I would consider RAG with a vector database. Production would also need policy versioning, data validation, CI/CD, and monitoring of latency, errors and costs. Before deployment, I would run a pilot with Finance users to check accuracy, missed exceptions and usability.
 
-**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00067 per question with `anthropic/claude-haiku-5.5` and USD 0.00007 with `openai/gpt-6-luna` (run 14, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 56/month with Haiku** or **USD 6/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
+**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00069 per question with `anthropic/claude-haiku-5.5` and USD 0.00007 with `openai/gpt-6-luna` (run 16, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 58/month with Haiku** or **USD 6/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
 
 ### 4. Optional enhancement: evaluation set and scoring script
 
-For the optional enhancement, I chose the evaluation set and scoring script because I think measuring accuracy is more important than adding features at this stage. I wanted to check the full process, including tool selection, parameters, calculations and evidence, not just the final answer. I also tested ambiguity and failure cases to see if the assistant asks for clarification or stops instead of guessing. I used independently calculated answers rather than another LLM as a judge. The results are in [`eval/results/`](eval/results/). I didn't choose additional guardrails or agentic routing because the current design already limits the LLM to predefined tools and deterministic calculations. I wanted to evaluate this approach first.
+For the optional enhancement, I chose the evaluation set and scoring script because I think measuring accuracy is more important than adding features at this stage. I wanted to check the full process, including tool selection, parameters, calculations and evidence, not just the final answer. I also tested ambiguity and failure cases to see if the assistant asks for clarification or stops instead of guessing. I used independently calculated answers rather than another LLM as a judge. The results are in [`eval/results/`](eval/results/). I didn't choose guardrails or agentic routing as the optional item, because the design already limits the LLM to predefined tools and deterministic calculations, and I wanted to evaluate this approach first. Some guardrails are still part of the core design: the assistant asks for clarification or declines instead of guessing, and after cold reviews found answers that silently dropped part of a question, a code check now refuses such answers. Follow-up questions use only the previous answered question as context; no chat history is stored.
 
 ## Time spent and next steps
 
@@ -73,8 +73,9 @@ answer  ◄── fixed template ◄── deterministic tool (pandas, ECB FX, p
   It never calculates figures, picks invoice rows, or writes answer text. Invoice rows and amounts are never sent to the LLM. It does receive the values it may filter by: vendor IDs and names, countries, categories, cost centres, currencies, and the 13 distinct invoice descriptions. In production, descriptions are supplier-written text, so they would have to be treated as untrusted input (and there would be far too many to list).
 - **Every parameter is validated** against a JSON schema and against the values that actually exist in the data (countries, categories, vendor IDs, policy clause IDs). An invented value becomes an error, never a guess.
 - **Dropped conditions are refused in code, not just by the prompt.**
-  - Before a spend or exception answer is returned, the backend looks for conditions it can recognise in the question: vendor names or IDs, countries, cost centres, non-EUR currencies, approvers, invoice numbers, amount or count thresholds, years (including "this year"), credit notes, payments, and rankings such as "which vendor".
+  - Before a spend or exception answer is returned, the backend looks for conditions it can recognise in the question: vendor names or IDs, vendor statuses (INACTIVE, ON_HOLD, not active), the missing-PO and missing-approver checks, countries, cost centres, non-EUR currencies, approvers, invoice numbers, amount or count thresholds, years (including "this year"), credit notes, payments, and rankings such as "which vendor".
   - It checks that the parameters express each one. If the tool has a filter for it but it wasn't applied, the answer is a clarification. If the condition can't be applied at all (e.g. "over EUR 50,000", a credit-note total, a payment question, a vendor ranking of an exception list, or a year outside the data), the answer is a decline. A broader or unrelated answer is never returned.
+  - A vendor status must be applied with the existing filters: `vendor_statuses` for spend, or the vendor IDs with that status for an exception list. Lowercase "inactive" on its own is ambiguous (status INACTIVE, or every vendor that is not ACTIVE), so the assistant asks which is meant and offers both as complete questions.
   - Conditions it can't recognise (e.g. "late invoices") still depend on the prompt rules.
 - **All calculations are deterministic code:**
   - Spend is the net invoiced amount in EUR, with credit notes and all statuses included.
@@ -141,8 +142,8 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
 
 | Provider | Model | Status |
 |---|---|---|
-| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 14 separate evaluation runs |
-| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 12 separate evaluation runs |
+| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 16 separate evaluation runs |
+| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 14 separate evaluation runs |
 | Stub (`LLM_PROVIDER=stub`) | keyword rules | Runs offline. Not an LLM; it fails some reworded questions. The UI header labels it "(not an LLM)" |
 | OpenAI direct, Ollama, other OpenAI-compatible APIs | — | **Untested.** They should work if they support tools and `tool_choice: "required"` |
 
@@ -202,7 +203,7 @@ HTTP status codes:
 
 | What | Command | Result (2026-11-05) |
 |---|---|---|
-| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **123 passed** |
+| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **146 passed** |
 | Evaluation (uses the LLM in `.env`) | `backend/.venv/bin/python eval/run_eval.py --runs 3` | See below |
 | UI smoke test against the running app (optional; needs Playwright) | `cd frontend && node e2e/ui_smoke.mjs` | **28/28 checks passed**, including a follow-up (real backend; LLM-down case used a backend pointed at an unreachable LLM endpoint) |
 | Frontend type check and build | `cd frontend && npm run build` | Passes |
@@ -216,13 +217,14 @@ HTTP status codes:
 - Follow-up cases send the earlier question first and pass the last answered turn as context, as the frontend does. T18 checks that a self-contained question does not inherit filters; T19 checks that a follow-up sent without context is clarified.
 - Dropped-condition cases: T20 checks that a vendor named by name is applied as a filter; T21 checks that a condition no tool can apply ("over EUR 50,000") is clarified or declined. Answering T21 counts as critical.
 - Unanswerable-question cases: T22 (credit-note total), T23 ("paid this year"), T24 (vendor ranking of missing approvers) and T26 ("spend this year") must be declined or clarified; answering counts as critical. T25 checks that a supported cost-centre ranking is still answered; declining a supported question counts as major (over-refusal).
+- Third-cold-review cases: T27 and T28 check single-invoice results for an invoice missing an approver (INV-20005) and one missing a PO (INV-20077) against the raw data; "nan" in any answer is critical. T29 checks that "inactive vendors" is clarified and that both offered options are answered exactly. T30 and T31 check that a vendor status combined with a check is applied. Answering without the status counts as critical.
 
-**Results, last run after a code change (run 14):** 21 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, follow-ups T17–T19, dropped conditions T20–T21, and unanswerable questions T22–T26) and 3 injected failures.
+**Results, last run after a code change (run 16):** 26 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, follow-ups T17–T19, dropped conditions T20–T21, unanswerable questions T22–T26, and the third cold review's cases T27–T31) and 3 injected failures.
 
 | Model (OpenRouter) | Critical errors | Cases with no findings | Tools level | Failure injection | Median latency | Median tokens per question | Median cost per question |
 |---|---|---|---|---|---|---|---|
-| `anthropic/claude-haiku-5.5` | 0 | 21/21 | 10/10 | 3/3 | 882 ms | 6,456 + 45 | USD 0.00067 |
-| `openai/gpt-6-luna` | 0 | 19/21 (2 major: T5 and T25, below) | 10/10 | 3/3 | 1,819 ms | 3,527 + 45 | USD 0.00007 |
+| `anthropic/claude-haiku-5.5` | 0 | 26/26 | 14/14 | 3/3 | 906 ms | 6,630 + 45 | USD 0.00069 |
+| `openai/gpt-6-luna` | 0 | 24/26 (2 major: T5 and T25, below) | 14/14 | 3/3 | 1,529 ms | 3,616 + 34 | USD 0.00007 |
 
 **History, kept in full in [`eval/results/README.md`](eval/results/README.md):**
 - **Run 1** flagged 4 "major" consistency findings. These were a **checker issue**: the check compared LLM-written wording rather than meaning. After the fix, run 2 and run 3 are clean.
@@ -238,8 +240,14 @@ HTTP status codes:
   - The new cases T22–T24 and T26 were critical for Haiku on the unfixed code (run 13).
   - The fix extends the same code check: credit notes, payment terms, relative years and rankings by a dimension the tool doesn't group by are now declined. No new analytics were added. After it, the second cold review passes 19 of 19, the separate "this year" check is declined, and "last year" and "in 2025" are still answered.
   - Run 14: Haiku 0 critical, 21/21. gpt-6-luna 0 critical, with two major findings: its T5 loop, and declining the supported cost-centre ranking (T25), which it also did before the fix. The scorer now counts an unnecessary decline as major (over-refusal), like an unnecessary clarification.
+- **A third cold review** ([questions and results](eval/results/2026-11-05_cold-review-probes.md)) passed **19 of 23** new unscripted questions. Two failures were critical:
+  - The single-invoice check reported "No issue detected" and printed "nan" for every invoice missing a PO (21) or an approver (25), because missing values load as NaN, which Python treats as true. A test now checks all 140 invoices against the raw data.
+  - Questions combining a vendor status with a check ("inactive vendors … missing a PO", "ON_HOLD vendors … no approver") were answered for all vendors. The code check now requires the status to be applied with the existing filters, and lowercase "inactive" alone is clarified with both readings.
+  - On the unfixed code, the new cases T27–T31 were critical: Haiku 5 cases, gpt-6-luna 2 (it declined the status questions instead) (run 15). After the fix (run 16): Haiku 0 critical, 26/26; gpt-6-luna 0 critical, with major findings for its T5 clarification loop and declining T25, both seen in earlier runs.
+  - **Documented, not fixed:** "What is our spend with Crown Travel Partners, and is that vendor allowed to be paid?" is declined because of the word "paid", although §4.1 answers the policy part. "What is the total spend in 2025 in USD?" is answered as spend on USD-billed invoices (EUR 1,015,796.16) instead of asking whether a conversion to USD was meant; the interpretation shown makes this visible.
+  - "How much did we spend with inactive vendors?" (answered in the second cold review) is now a clarification between the two readings, by design.
 - A stub dry run showed the scorer does catch failures. It also found a real defect: a figure appeared in the answer text but not in the result. That defect was fixed.
-- **Caveat:** 21 cases over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
+- **Caveat:** 26 cases over 140 invoices is a smoke test and a regression guard. It does not prove accuracy. Some cases use the same wording as examples in the system prompt (T5 "consulting", T17 "How about just CC-FIN-100?", T20 "BioReagent", T21 "over EUR 50,000"), so they are not held out; the cold-review questions are.
 
 ## Data
 
