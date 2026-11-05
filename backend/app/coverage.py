@@ -10,13 +10,15 @@ conditions it can recognise from the data catalog and checks that the parameters
   a country or currency filter on an exception list) or the year is outside the data -> decline.
 
 Recognised: vendor names and IDs, countries, cost centres, non-EUR currencies, approvers, invoice numbers,
-amount/count thresholds and years. Anything else (e.g. "late invoices") still depends on the interpreter's prompt.
+amount/count thresholds, years (including "this year"), credit notes, payments, and rankings by a dimension the
+tool does not group by. Anything else (e.g. "late invoices") still depends on the interpreter's prompt.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from .tools import Context, eur
@@ -43,6 +45,27 @@ _THRESHOLDS = [
 ]
 _SYMBOL = {"€": "EUR", "$": "USD", "£": "GBP"}
 _GROUP_FOR = {"vendor_ids": "vendor", "countries": "country", "cost_centers": "cost_center", "currencies": "currency"}
+
+# No tool totals or lists credit notes on their own; spend is net of them, so "including credit notes" is covered.
+_CREDIT = re.compile(r"(?<![\w-])credit[- ]?(?:notes?|memos?)(?![\w-])")
+_CREDIT_INCLUDED = re.compile(r"(?:including|incl\.?|net of|after)\s+(?:the\s+|our\s+|all\s+|any\s+)?credit[- ]?(?:notes?|memos?)")
+# There is no payment data. Policy wording such as "may not be paid" (§3.1) describes a rule, not a payment status.
+_PAYMENT = re.compile(r"(?<![\w-])(?:paid|unpaid|pay|pays|paying|payments?|payables?|settled|outstanding|overdue)(?![\w-])")
+_POLICY_PAY = re.compile(r"(?:must|may|can|cannot|can't|should|could)\s+(?:not\s+)?be\s+paid")
+# Rankings or breakdowns by a dimension: must match how the chosen tool groups its result.
+_DIMENSIONS = {"vendor": r"vendors?|suppliers?", "country": r"countr(?:y|ies)", "category": r"categor(?:y|ies)",
+               "currency": r"currenc(?:y|ies)", "cost_center": r"cost[- ]cent(?:re|er)s?"}
+_RANKING_FORMS = [r"(?:which|what)\s+(?:top\s+)?(?:\d+\s+)?(?:DIM)", r"(?:by|per|each|every)\s+(?:DIM)",
+                  r"top\s+(?:\d+\s+)?(?:DIM)", r"(?:DIM)\s+(?:with|has|have|had)\s+the\s+(?:most|highest|largest|biggest|fewest|lowest)",
+                  r"rank(?:ing|ed|s)?\s+(?:of\s+)?(?:the\s+|our\s+)?(?:DIM)"]
+_RANKINGS = {dim: [re.compile(r"(?<![\w-])" + form.replace("DIM", words) + r"(?![\w-])") for form in _RANKING_FORMS]
+             for dim, words in _DIMENSIONS.items()}
+_RELATIVE_YEARS = {"this year": 0, "current year": 0, "year to date": 0, "ytd": 0, "next year": 1,
+                   "last year": -1, "previous year": -1}
+
+
+def _today() -> date:
+    return date.today()
 
 
 def _mentioned(text: str, alias: str) -> bool:
@@ -75,7 +98,12 @@ def _threshold_misses(q: str, tool: str, params: Any, ctx: Context) -> list[Miss
     return misses
 
 
-def missed_conditions(question: str, tool: str, params: Any, ctx: Context) -> list[Missed]:
+def _first_outside(pattern: re.Pattern, q: str, allowed: re.Pattern) -> str | None:
+    spans = [m.span() for m in allowed.finditer(q)]
+    return next((m.group(0) for m in pattern.finditer(q) if not any(a <= m.start() < b for a, b in spans)), None)
+
+
+def missed_conditions(question: str, tool: str, params: Any, ctx: Context, today: date | None = None) -> list[Missed]:
     """Conditions recognised in the question that the parameters do not express. Empty list = covered."""
     if tool not in DATA_TOOLS:
         return []
@@ -123,4 +151,26 @@ def missed_conditions(question: str, tool: str, params: Any, ctx: Context) -> li
     for year in sorted(set(re.findall(r"(?<![\w-])((?:19|20)\d{2})(?!\d)", q))):
         if int(year) != data_year:
             misses.append(Missed(year, f"'{year}': the data covers {data_year} only", False, out_of_period=True))
+    current = (today or _today()).year
+    for phrase, offset in _RELATIVE_YEARS.items():
+        if _mentioned(q, phrase) and current + offset != data_year:
+            misses.append(Missed(phrase, f"'{phrase}' means {current + offset}; the data covers {data_year} only",
+                                 False, out_of_period=True))
+    if found := _first_outside(_CREDIT, q, _CREDIT_INCLUDED):
+        misses.append(Missed(found, f"'{found}': credit notes can't be totalled or listed on their own "
+                                    "(spend always includes them, net)", False))
+    if found := _first_outside(_PAYMENT, q, _POLICY_PAY):
+        misses.append(Missed(found, f"'{found}': payment status and paid amounts are not in the data "
+                                    "(spend is invoiced, not paid)", False))
+    grouped = (getattr(params, "group_by", None) if tool == "spend"
+               else "vendor" if getattr(params, "check", None) == "non_active_vendor" else "cost_center")
+    for dim, patterns in _RANKINGS.items():
+        match = next((m for p in patterns for m in [p.search(q)] if m), None)
+        if match and grouped != dim:
+            asked, label = match.group(0), dim.replace("_", " ").replace("center", "centre")
+            if tool == "spend":
+                misses.append(Missed(asked, f"'{asked}' asks for a breakdown by {label}, but none was applied", True))
+            else:
+                misses.append(Missed(asked, f"'{asked}': this list is grouped by {grouped.replace('_', ' ').replace('center', 'centre')} "
+                                            f"and can't be ranked by {label}", False))
     return misses
