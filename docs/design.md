@@ -167,6 +167,7 @@ My original questions, with the decisions taken:
 5. The architecture keeps data access, policy rules, question interpretation, and tool calling separate.
 6. Policy clauses have stable IDs (e.g. §3, §4.1), and every citation is checked against the clause list and the tool output before the answer is returned.
 7. The system fails closed: if the LLM or a tool fails, it returns an explicit error, never a partial answer.
+8. Never answer a broader question than asked. Conditions the backend can recognise in the question (vendors, countries, cost centres, currencies, approvers, invoice numbers, amount thresholds, years) must appear in the parameters; otherwise the system clarifies or declines. This is checked in code, not only in the prompt (added after a cold review).
 
 ### 2.5 Real-world considerations (documented, not built)
 
@@ -220,6 +221,8 @@ The goal is to find critical errors and report actual behaviour per case, not on
 | T17 | T4's missing-PO question, then "How about just the invoices from CC-FIN-100?" | Follow-up (added after manual testing): the previous answered turn is passed as context; 10 missing-PO invoices, EUR 383,083.04, marked as a follow-up | Answers a different analysis (e.g. all CC-FIN-100 spend) |
 | T18 | T4's missing-PO question, then T2's Spain question | Self-contained question after a previous turn: same answer as T2; nothing carried over | Inherits filters from the previous question |
 | T19 | "How about just the invoices from CC-FIN-100?" with no previous turn | Clarify; do not guess the earlier question | Answers |
+| T20 | "How much did we spend with BioReagent Direct?" | Dropped condition (added after a cold review): vendor named by name is applied as a filter; EUR 1,131,552.52, 19 invoices | Answers total spend for all vendors |
+| T21 | "Show me invoices over EUR 50,000 without a PO" | Dropped condition: no tool can filter by amount, so clarify or decline | Answers all missing-PO invoices (a broader question) |
 
 **Phrasing variants** (selected cases only, each must produce the same interpretation and figures as the original):
 - T1: "Which 5 suppliers did we spend the most with last year?" *(also tests "last year" means 2025, or that the assistant states this assumption)*
@@ -241,6 +244,7 @@ The goal is to find critical errors and report actual behaviour per case, not on
 | E2E | Required limitations present (T4, T6) and no forbidden claims | All cases |
 | Tools / E2E | Counts and EUR totals stated in assumptions and limitations match the cited evidence rows (added after manual testing) | All spend cases |
 | E2E | Follow-ups: built on the previous turn when asked (T17), nothing carried over otherwise (T18), clarified without context (T19) | All follow-up cases |
+| E2E | No broader answer: a recognisable condition is applied, or the system clarifies or declines (T20, T21) | All cases |
 | E2E | Same results across 3 runs | All cases |
 
 Forbidden claims are checked with a keyword list ("compliant", "properly approved", "violation", a person's name as approver) plus a manual read of all outputs. At about 40 outputs, manual review is feasible.
@@ -258,7 +262,7 @@ The aim is to check whether an analyst can understand the answer, its basis, and
 
 ### 3.7 Limits of this evaluation
 
-Fourteen cases (including rewordings and follow-ups) on 140 rows is a smoke test and regression guard, not proof of accuracy. Manual testing found two bugs that the automated cases missed (wrong scope of notes, lost follow-up context); both now have regression tests. Documented but not built:
+Sixteen cases (including rewordings, follow-ups and dropped conditions) on 140 rows is a smoke test and regression guard, not proof of accuracy. Manual testing found two bugs that the automated cases missed (wrong scope of notes, lost follow-up context), and a cold review with unscripted questions found two more (a dropped vendor name, a dropped amount condition). All four now have regression tests. Documented but not built:
 - remaining cases from the review (an approval amount in another currency with no date, credit-note matching, policy-change and dirty-data fixtures, prompt injection);
 - checks that totals add up across groupings;
 - a production pilot measuring analyst agreement, false flags, missed exceptions, and time to verify an answer.

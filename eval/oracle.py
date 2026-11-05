@@ -74,6 +74,8 @@ def expected() -> dict[str, dict]:
                 "also_missing_po": sorted(no_appr[no_appr["po_number"] == ""]["invoice_number"])},
         "T17": {"rows": set(no_po[no_po["cost_center"] == "CC-FIN-100"]["invoice_number"]),
                 "total_eur": round(float(no_po[no_po["cost_center"] == "CC-FIN-100"]["eur"].sum()), 2)},
+        "T20": {"rows": set(df[df["vendor_id"] == "V-1008"]["invoice_number"]),
+                "total_eur": round(float(df[df["vendor_id"] == "V-1008"]["eur"].sum()), 2)},
         "T5_category": {"total_eur": round(df[df["category"] == "Consulting"]["eur"].sum(), 2),
                         "rows": set(df[df["category"] == "Consulting"]["invoice_number"])},
         "T5_description": {"total_eur": round(df[df["description"].str.contains("consulting", case=False)]["eur"].sum(), 2),

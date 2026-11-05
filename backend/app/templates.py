@@ -109,6 +109,7 @@ DECLINE_TEXT = {
     "data_not_available": "I can't answer this from the available data.",
     "unsupported_question": "I can't answer this with the analyses this assistant supports.",
     "not_finance_related": "This assistant only answers questions about the 2025 invoice data and the procurement policy.",
+    "unsupported_condition": "I can't apply every condition in this question, so I won't give a broader answer instead.",
 }
 
 

@@ -88,6 +88,13 @@ CASES = [
      "params": {"countries": ["Spain"]}, "rows": "T2", "follow_up": False},
     {"id": "T19", "question": "How about just the invoices from CC-FIN-100?", "status": "clarification_needed",
      "tool": "clarify", "min_options": 0},  # without context, options can only be guesses; asking is what matters
+    # Dropped conditions (found in a cold review with unscripted questions). T20: a vendor named by name must be
+    # applied as a filter. T21: a condition no tool can express must be clarified or declined; answering the
+    # broader question (all missing-PO invoices) is critical.
+    {"id": "T20", "question": "How much did we spend with BioReagent Direct?", "status": "answered", "tool": "spend",
+     "params": {"vendor_ids": ["V-1008"]}, "rows": "T20"},
+    {"id": "T21", "question": "Show me invoices over EUR 50,000 without a PO", "status": "clarification_needed or declined",
+     "tool": "-", "expect_non_answer": True},
 ]
 
 # --------------------------------------------------------------------------- checks
@@ -114,6 +121,16 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
 
     interp = r["interpretation"]
     tool, params = interp.get("tool"), interp.get("params") or {}
+
+    # Cases where any non-answer (clarification or decline) is correct and an answer would be broader than asked.
+    if case.get("expect_non_answer"):
+        if r["status"] == "answered":
+            fail("status", CRITICAL, "interpretation", f"answered with {tool} {params}: a broader answer than asked")
+        elif r["status"] == "error":
+            fail("status", MAJOR, "llm", f"error {r['error']['code']}: {r['error']['message']}")
+        if r.get("result") or r["evidence"]["row_count"]:
+            fail("no_partial_answer", CRITICAL, "system", "non-answer carries a result or evidence")
+        return f
     want = case["status"]
 
     # Status / behaviour
@@ -170,7 +187,7 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
             fail("figures", CRITICAL, "system", f"top5 {got} != {exp['T1']['top5']}")
         if abs(res.get("total_eur", 0) - exp["T1"]["total_eur"]) > 0.01:
             fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp['T1']['total_eur']}")
-    if key in ("T2", "T4", "T11", "T17") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
+    if key in ("T2", "T4", "T11", "T17", "T20") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
         fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp[key]['total_eur']}")
     if key == "T11" and res.get("also_missing_po") != exp["T11"]["also_missing_po"]:
         fail("figures", CRITICAL, "system", f"also_missing_po {res.get('also_missing_po')}")
@@ -395,7 +412,8 @@ def main() -> int:
                              "assumptions": body["assumptions"], "limitations": body["limitations"],
                              "findings": findings})
             # consistency across runs: same meaning (status, tool, applied params), same templated answer
-            sig = {json.dumps([r["status"], r["tool"], semantic_params(r["params"])], sort_keys=True) for r in runs}
+            sig = ({str(r["status"] != "answered") for r in runs} if case.get("expect_non_answer") else
+                   {json.dumps([r["status"], r["tool"], semantic_params(r["params"])], sort_keys=True) for r in runs})
             answers = {r["answer"] for r in runs if r["status"] == "answered"}
             consistency = [] if len(sig) == 1 and len(answers) <= 1 else [
                 {"check": "consistency", "severity": MAJOR, "layer": "interpretation",
