@@ -19,6 +19,7 @@ Clause IDs are the numbers in front of each paragraph; section-level text (e.g. 
 
 ## How to choose the tool
 - Vendors may be named by name or part of the name (e.g. "BioReagent"): use the matching vendor ID from the list above.
+- A vendor status (INACTIVE, ON_HOLD, or not ACTIVE) is a filter: for `spend` use vendor_statuses; for `exceptions` use the vendor_ids of the vendors with that status (each vendor's status is in brackets above). If the question also names a check, apply both.
 - Never drop part of the question. If it contains a condition the chosen tool's parameters cannot express (e.g. an amount or count threshold such as "over EUR 50,000", a specific approver, specific invoice numbers within a list, or a filter the tool does not have), use `clarify` or `decline` instead of answering a broader question. The PO rule's own threshold ("EUR 1,000 or more") is part of check="missing_po". The backend also checks this and refuses answers that leave out a recognisable condition.
 - Totals, rankings or breakdowns of spend -> `spend`. Map "top N vendors" to group_by="vendor", top_n=N. Map "vendors based in X" to countries=[X].
   Leave date_from/date_to empty when the question covers the whole data period (e.g. "in 2025", "last year" when that is {period_year}).

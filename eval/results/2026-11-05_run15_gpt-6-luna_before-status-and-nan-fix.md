@@ -1,0 +1,299 @@
+# Evaluation results: openai/gpt-6-luna via https://openrouter.ai/api/v1
+
+- Run: 2026-11-05 07:32 to 07:34 UTC; 3 run(s) per case; worst run counts.
+- Expected answers: `eval/oracle.py` (independent pandas implementation; shares only the data files).
+
+## Critical errors
+
+- **T27** run 1: `invoice_check` (system): §3.1 ok (expected flag)
+- **T27** run 1: `forbidden_claim` (display): /\bnan\b/ in answer
+- **T27** run 2: `invoice_check` (system): §3.1 ok (expected flag)
+- **T27** run 2: `forbidden_claim` (display): /\bnan\b/ in answer
+- **T27** run 3: `invoice_check` (system): §3.1 ok (expected flag)
+- **T27** run 3: `forbidden_claim` (display): /\bnan\b/ in answer
+- **T28** run 1: `invoice_check` (system): §2.1 ok (expected flag)
+- **T28** run 1: `forbidden_claim` (display): /\bnan\b/ in answer
+- **T28** run 2: `invoice_check` (system): §2.1 ok (expected flag)
+- **T28** run 2: `forbidden_claim` (display): /\bnan\b/ in answer
+- **T28** run 3: `invoice_check` (system): §2.1 ok (expected flag)
+- **T28** run 3: `forbidden_claim` (display): /\bnan\b/ in answer
+- **T27** run -: `invoice_check` (system): §3.1 ok (expected flag)
+- **T27** run -: `forbidden_claim` (display): /\bnan\b/ in answer
+- **T28** run -: `invoice_check` (system): §2.1 ok (expected flag)
+- **T28** run -: `forbidden_claim` (display): /\bnan\b/ in answer
+
+## Summary
+
+| Level | Result |
+|---|---|
+| Tools (no LLM) | 12/14 cases with no findings |
+| End-to-end + interpretation | 19/26 cases with no findings in any run; 5 with major findings; 2 with critical |
+| Failure injection (T16) | 3/3 scenarios pass |
+
+## End-to-end cases (actual results)
+
+| Case | Question | Expected | Actual status / tool (per run) | Params (run 1) | Worst | Findings |
+|---|---|---|---|---|---|---|
+| T1 | What are our top 5 vendors by total spend in 2025? | answered / spend | answered/spend; answered/spend; answered/spend | `{"group_by": "vendor", "top_n": 5}` | pass | - |
+| T1-v | Which 5 suppliers did we spend the most with last year? | answered / spend | answered/spend; answered/spend; answered/spend | `{"group_by": "vendor", "top_n": 5, "date_from": "2025-01-01", "date_to": "2025-12-31"}` | pass | - |
+| T2 | What is our total spend with vendors based in Spain? | answered / spend | answered/spend; answered/spend; answered/spend | `{"countries": ["Spain"]}` | pass | - |
+| T3 | Who is allowed to approve an invoice of EUR 60,000? | answered / approval_tier | answered/approval_tier; answered/approval_tier; answered/approval_tier | `{"amount": 60000.0, "currency": "EUR"}` | pass | - |
+| T3-v | Who signs off on a 60k invoice? | answered / approval_tier | answered/approval_tier; answered/approval_tier; answered/approval_tier | `{"amount": 60000.0}` | pass | - |
+| T4 | Which invoices of EUR 1,000 or more have no PO, and who should they be flagged to? | answered / exceptions | answered/exceptions; answered/exceptions; answered/exceptions | `{"check": "missing_po"}` | pass | - |
+| T5 | What is our consulting spend? | clarification_needed / clarify | clarification_needed/clarify; clarification_needed/clarify; clarification_needed/clarify | `{"question": "Do you mean spend with vendors in the Consulting category, or invoices described as consulting services?", "options": ["What is our spend with vendors in the Consulting category?", "What is our spend on invoices described as Q1, Q2, Q3, or Q4 consulting services?"]}` | major | clarification.follow_through: option 'What is our spend with vendors in the Consulting category?' -> clarification_needed/clarify {'question': 'Do you mean vendors whose vendor-master category is Consulting, or invoices described as consulting services?', 'options': ['What is our spend with vendors in the Consulting vendor category?', 'What is our spend on invoices described as consulting services?']}<br>clarification.follow_through: options did not cover both readings (covered: ['T5_description']) |
+| T5-v | How much went on consulting? | clarification_needed / clarify | clarification_needed/clarify; clarification_needed/clarify; clarification_needed/clarify | `{"question": "Do you mean spend with vendors in the Consulting category, or invoices described as consulting services?", "options": ["How much was spent with vendors in the Consulting category in 2025?", "How much was spent on invoices described as consulting services in 2025?"]}` | pass | - |
+| T6 | Was INV-20008 approved by someone with sufficient authority? | answered / invoice_check | answered/invoice_check; answered/invoice_check; answered/invoice_check | `{"invoice_number": "INV-20008"}` | pass | - |
+| T8 | What was our total spend in 2024? | declined / decline | declined/decline; declined/decline; declined/decline | `{"reason": "outside_data_period", "explanation": "The available invoice data covers 2025 only, so total spend for 2024 cannot be determined."}` | pass | - |
+| T11 | Which invoices are missing an approver? | answered / exceptions | answered/exceptions; answered/exceptions; answered/exceptions | `{"check": "missing_approver"}` | pass | - |
+| T17 | Which invoices of EUR 1,000 or more have no PO? → How about just the invoices from CC-FIN-100? | answered / exceptions | answered/exceptions; answered/exceptions; answered/exceptions | `{"check": "missing_po", "cost_centers": ["CC-FIN-100"]}` | pass | - |
+| T18 | Which invoices of EUR 1,000 or more have no PO? → What is our total spend with vendors based in Spain? | answered / spend | answered/spend; answered/spend; answered/spend | `{"countries": ["Spain"]}` | pass | - |
+| T19 | How about just the invoices from CC-FIN-100? | clarification_needed / clarify | clarification_needed/clarify; clarification_needed/clarify; clarification_needed/clarify | `{"question": "What would you like to know about invoices from CC-FIN-100?", "options": ["What was the net invoiced spend for invoices from CC-FIN-100 in 2025?", "Which invoices from CC-FIN-100 need follow-up because they lack a PO?", "Which invoices from CC-FIN-100 need follow-up because they lack an approver?", "Which invoices from CC-FIN-100 are from vendors that are not ACTIVE?"]}` | pass | - |
+| T20 | How much did we spend with BioReagent Direct? | answered / spend | answered/spend; answered/spend; answered/spend | `{"vendor_ids": ["V-1008"]}` | pass | - |
+| T21 | Show me invoices over EUR 50,000 without a PO | clarification_needed or declined / - | declined/decline; declined/decline; declined/decline | `{"reason": "unsupported_question", "explanation": "The available invoice exception check can identify missing-PO invoices at the policy threshold of EUR 1,000 or more, but it cannot filter the results to invoices over EUR 50,000."}` | pass | - |
+| T22 | What is the total value of our credit notes? | clarification_needed or declined / - | declined/decline; declined/decline; declined/decline | `{"reason": "data_not_available", "explanation": "The spend tool includes credit notes in net spend but cannot isolate credit-note amounts, so I can\u2019t determine their total value."}` | pass | - |
+| T23 | How much have we paid our vendors this year? | clarification_needed or declined / - | declined/decline; declined/decline; declined/decline | `{"reason": "outside_data_period", "explanation": "The question asks about this year (2026), but invoice data is available only for 2025."}` | pass | - |
+| T24 | Which vendor has the most invoices without an approver? | clarification_needed or declined / - | declined/decline; declined/decline; declined/decline | `{"reason": "unsupported_question", "explanation": "The available tools can list invoices without an approver, but cannot count them by vendor to identify which has the most."}` | pass | - |
+| T25 | Which cost centre has the most invoices without a PO? | answered / exceptions | declined/decline; declined/decline; declined/decline | `{"reason": "unsupported_question", "explanation": "The available tools can list invoices without a PO, but cannot count or rank them by cost centre."}` | major | status: unnecessary decline (over-refusal; no wrong figure shown)<br>interpretation.tool: tool decline (expected exceptions)<br>interpretation.params: check=None (expected 'missing_po') |
+| T26 | What is our total spend this year? | clarification_needed or declined / - | declined/decline; declined/decline; declined/decline | `{"reason": "outside_data_period", "explanation": "The available invoice data covers 2025 only, so it cannot provide total spend for this year (2026)."}` | pass | - |
+| T27 | Was INV-20005 properly approved? | answered / invoice_check | answered/invoice_check; answered/invoice_check; answered/invoice_check | `{"invoice_number": "INV-20005"}` | critical | invoice_check: §3.1 ok (expected flag)<br>forbidden_claim: /\bnan\b/ in answer |
+| T28 | Is INV-20077 compliant with the approval policy? | answered / invoice_check | answered/invoice_check; answered/invoice_check; answered/invoice_check | `{"invoice_number": "INV-20077"}` | critical | invoice_check: §2.1 ok (expected flag)<br>forbidden_claim: /\bnan\b/ in answer |
+| T29 | Which invoices from inactive vendors were also missing a PO? | clarification_needed / clarify | declined/decline; declined/decline; declined/decline | `{"reason": "unsupported_question", "explanation": "The available exception checks can identify invoices missing a PO or invoices from inactive vendors, but cannot filter for both conditions together."}` | major | status: declined instead of clarifying (no wrong figure shown)<br>interpretation.tool: tool decline (expected clarify)<br>clarification.follow_through: options covered readings [] of 2 |
+| T30 | Show me invoices from ON_HOLD vendors that have no approver. | answered / exceptions | declined/decline; declined/decline; declined/decline | `{"reason": "unsupported_question", "explanation": "The available follow-up listing can filter by either missing approver or non-active vendor status, but not both conditions together."}` | major | status: unnecessary decline (over-refusal; no wrong figure shown)<br>interpretation.tool: tool decline (expected exceptions)<br>interpretation.params: check=None (expected 'missing_approver')<br>interpretation.params: vendor_ids=None (expected ['V-1010']) |
+| T31 | List invoices without an approver from vendors that are inactive or on hold. | answered / exceptions | declined/decline; declined/decline; declined/decline | `{"reason": "unsupported_question", "explanation": "The available exception query can list invoices by missing approver or non-active vendor status separately, but cannot filter for invoices meeting both conditions."}` | major | status: unnecessary decline (over-refusal; no wrong figure shown)<br>interpretation.tool: tool decline (expected exceptions)<br>interpretation.params: check=None (expected 'missing_approver')<br>interpretation.params: vendor_ids=None (expected ['V-1006', 'V-1010']) |
+
+## Tools level (canonical parameters, no LLM)
+
+| Case | Findings |
+|---|---|
+| T1 | pass |
+| T2 | pass |
+| T3 | pass |
+| T4 | pass |
+| T6 | pass |
+| T11 | pass |
+| T17 | pass |
+| T18 | pass |
+| T20 | pass |
+| T25 | pass |
+| T27 | invoice_check: §3.1 ok (expected flag)<br>forbidden_claim: /\bnan\b/ in answer |
+| T28 | invoice_check: §2.1 ok (expected flag)<br>forbidden_claim: /\bnan\b/ in answer |
+| T30 | pass |
+| T31 | pass |
+
+## Failure injection (T16)
+
+| Scenario | /ask HTTP | status | error code | /summary HTTP | Result |
+|---|---|---|---|---|---|
+| T16 timeout | 502 | error | llm_timeout | 200 | pass |
+| T16 malformed_tool_call | 502 | error | llm_invalid_arguments | 200 | pass |
+| T16 invalid_parameters | 502 | error | invalid_params | 200 | pass |
+
+Latency per /ask (incl. LLM): median 1331 ms, max 5107 ms over 78 calls.
+
+LLM usage per question: median 3527 prompt + 45 completion tokens; median cost USD 0.00007, total USD 0.0070 over 78 calls (as reported by the provider). Clarification follow-through calls are not included.
+
+## Answers (run 1)
+
+**T1**: What are our top 5 vendors by total spend in 2025?
+
+```
+Top 5 vendors by net spend:
+1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)
+2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)
+3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)
+4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)
+5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)
+These 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).
+```
+
+**T1-v**: Which 5 suppliers did we spend the most with last year?
+
+```
+Top 5 vendors by net spend:
+1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)
+2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)
+3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)
+4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)
+5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)
+These 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).
+```
+
+**T2**: What is our total spend with vendors based in Spain?
+
+```
+Net spend (countries = Spain): EUR 2,631,938.81 across 49 invoices.
+```
+
+**T3**: Who is allowed to approve an invoice of EUR 60,000?
+
+```
+An invoice of EUR 60,000.00 requires approval by: Finance Director (policy §3, tier "50,000.01 – 250,000").
+```
+
+**T3-v**: Who signs off on a 60k invoice?
+
+```
+An invoice of EUR 60,000.00 requires approval by: Finance Director (policy §3, tier "50,000.01 – 250,000").
+```
+
+**T4**: Which invoices of EUR 1,000 or more have no PO, and who should they be flagged to?
+
+```
+21 invoices at or above the PO threshold with no PO number (potential maverick spend), totalling EUR 1,131,481.11.
+By cost centre:
+- CC-FIN-100: 10 invoices, EUR 383,083.04
+- CC-COM-440: 5 invoices, EUR 277,102.48
+- CC-IT-550: 2 invoices, EUR 203,183.42
+- CC-OPS-330: 3 invoices, EUR 191,864.23
+- CC-RND-210: 1 invoice, EUR 76,247.94
+Required action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (§2.2).
+```
+
+**T5**: What is our consulting spend?
+
+```
+Do you mean spend with vendors in the Consulting category, or invoices described as consulting services?
+```
+
+**T5-v**: How much went on consulting?
+
+```
+Do you mean spend with vendors in the Consulting category, or invoices described as consulting services?
+```
+
+**T6**: Was INV-20008 approved by someone with sufficient authority?
+
+```
+INV-20008, GBP 50,350.62 (EUR 60,435.49). Required approver under §3: Finance Director.
+- §2.1 PO required at EUR 1,000.00 or above: No issue detected in checked fields. PO number recorded: PO-78797 (validity and issue date cannot be checked).
+- §3.1 Approver recorded: No issue detected in checked fields. Recorded approver: r.okafor.
+- §3 Approver has authority (required role: Finance Director): Cannot determine from available data. The data does not map approvers to roles, so the approver's authority cannot be verified.
+- §4.1 Vendor is ACTIVE: No issue detected in checked fields. Vendor status ACTIVE in the vendor master (undated snapshot).
+- §7.2 No self-approval / segregation of duties: Cannot determine from available data. The data has no requester, so segregation of duties cannot be checked.
+Items that cannot be determined need information that is not in the data.
+```
+
+**T8**: What was our total spend in 2024?
+
+```
+I can't answer this: the question is about a period the invoice data does not cover.
+```
+
+**T11**: Which invoices are missing an approver?
+
+```
+25 invoices with no approver recorded, totalling EUR 1,057,076.74.
+By cost centre:
+- CC-FIN-100: 10 invoices, EUR 577,178.35
+- CC-OPS-330: 4 invoices, EUR 196,021.31
+- CC-COM-440: 5 invoices, EUR 177,549.22
+- CC-RND-210: 3 invoices, EUR 61,135.84
+- CC-IT-550: 3 invoices, EUR 45,192.02
+3 of these also have no PO number: INV-20042, INV-20123, INV-20128.
+Required action: Hold these invoices; they may not be paid until an approval is recorded (§3.1).
+```
+
+**T17**: Which invoices of EUR 1,000 or more have no PO? → How about just the invoices from CC-FIN-100?
+
+```
+10 invoices at or above the PO threshold with no PO number (potential maverick spend) (cost centers = CC-FIN-100), totalling EUR 383,083.04.
+By cost centre:
+- CC-FIN-100: 10 invoices, EUR 383,083.04
+Required action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (§2.2).
+```
+
+**T18**: Which invoices of EUR 1,000 or more have no PO? → What is our total spend with vendors based in Spain?
+
+```
+Net spend (countries = Spain): EUR 2,631,938.81 across 49 invoices.
+```
+
+**T19**: How about just the invoices from CC-FIN-100?
+
+```
+What would you like to know about invoices from CC-FIN-100?
+```
+
+**T20**: How much did we spend with BioReagent Direct?
+
+```
+Net spend (vendor ids = V-1008): EUR 1,131,552.52 across 19 invoices.
+```
+
+**T21**: Show me invoices over EUR 50,000 without a PO
+
+```
+I can't answer this with the analyses this assistant supports.
+```
+
+**T22**: What is the total value of our credit notes?
+
+```
+I can't answer this from the available data.
+```
+
+**T23**: How much have we paid our vendors this year?
+
+```
+I can't answer this: the question is about a period the invoice data does not cover.
+```
+
+**T24**: Which vendor has the most invoices without an approver?
+
+```
+I can't answer this with the analyses this assistant supports.
+```
+
+**T25**: Which cost centre has the most invoices without a PO?
+
+```
+I can't answer this with the analyses this assistant supports.
+```
+
+**T26**: What is our total spend this year?
+
+```
+I can't answer this: the question is about a period the invoice data does not cover.
+```
+
+**T27**: Was INV-20005 properly approved?
+
+```
+INV-20005, EUR 50,827.14. Required approver under §3: Finance Director.
+- §2.1 PO required at EUR 1,000.00 or above: No issue detected in checked fields. PO number recorded: PO-79125 (validity and issue date cannot be checked).
+- §3.1 Approver recorded: No issue detected in checked fields. Recorded approver: nan.
+- §3 Approver has authority (required role: Finance Director): Cannot determine from available data. The data does not map approvers to roles, so the approver's authority cannot be verified.
+- §4.1 Vendor is ACTIVE: No issue detected in checked fields. Vendor status ACTIVE in the vendor master (undated snapshot).
+- §7.2 No self-approval / segregation of duties: Cannot determine from available data. The data has no requester, so segregation of duties cannot be checked.
+Items that cannot be determined need information that is not in the data.
+```
+
+**T28**: Is INV-20077 compliant with the approval policy?
+
+```
+INV-20077, EUR 5,148.47. Required approver under §3: Department Head.
+- §2.1 PO required at EUR 1,000.00 or above: No issue detected in checked fields. PO number recorded: nan (validity and issue date cannot be checked).
+- §3.1 Approver recorded: No issue detected in checked fields. Recorded approver: l.chen.
+- §3 Approver has authority (required role: Department Head): Cannot determine from available data. The data does not map approvers to roles, so the approver's authority cannot be verified.
+- §4.1 Vendor is ACTIVE: Flag for review. Vendor status ON_HOLD in the vendor master (undated snapshot). Escalate to Procurement Excellence before processing.
+- §7.2 No self-approval / segregation of duties: Cannot determine from available data. The data has no requester, so segregation of duties cannot be checked.
+Items that cannot be determined need information that is not in the data.
+```
+
+**T29**: Which invoices from inactive vendors were also missing a PO?
+
+```
+I can't answer this with the analyses this assistant supports.
+```
+
+**T30**: Show me invoices from ON_HOLD vendors that have no approver.
+
+```
+I can't answer this with the analyses this assistant supports.
+```
+
+**T31**: List invoices without an approver from vendors that are inactive or on hold.
+
+```
+I can't answer this with the analyses this assistant supports.
+```

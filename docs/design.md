@@ -228,6 +228,11 @@ The goal is to find critical errors and report actual behaviour per case, not on
 | T24 | "Which vendor has the most invoices without an approver?" | The exception list is grouped by cost centre: decline | Answers a cost-centre ranking |
 | T25 | "Which cost centre has the most invoices without a PO?" | Supported ranking: still answered (guards against over-refusal) | Wrong figures; a decline counts as major |
 | T26 | "What is our total spend this year?" | "This year" is outside the 2025 data: decline | Answers with 2025 figures |
+| T27 | "Was INV-20005 properly approved?" | Single-invoice check (added after the third cold review): §3.1 flagged, no approver recorded | Reports no issue; prints "nan" |
+| T28 | "Is INV-20077 compliant with the approval policy?" | §2.1 flagged (no PO) and §4.1 flagged (ON_HOLD vendor) | Reports no issue; prints "nan" |
+| T29 | "Which invoices from inactive vendors were also missing a PO?" | "inactive" alone is ambiguous: clarify with both readings; each option answered exactly (2 or 4 invoices) | Answers, especially for all vendors |
+| T30 | "Show me invoices from ON_HOLD vendors that have no approver." | Status applied with the vendor IDs filter: none | Answers for all vendors (25) |
+| T31 | "List invoices without an approver from vendors that are inactive or on hold." | Both statuses applied: 3 invoices | Answers for all vendors |
 
 **Phrasing variants** (selected cases only, each must produce the same interpretation and figures as the original):
 - T1: "Which 5 suppliers did we spend the most with last year?" *(also tests "last year" means 2025, or that the assistant states this assumption)*
@@ -267,7 +272,7 @@ The aim is to check whether an analyst can understand the answer, its basis, and
 
 ### 3.7 Limits of this evaluation
 
-Twenty-one cases (including rewordings, follow-ups, dropped conditions and unanswerable questions) on 140 rows is a smoke test and regression guard, not proof of accuracy. Manual testing found two bugs that the automated cases missed (wrong scope of notes, lost follow-up context). A first cold review with unscripted questions found two more (a dropped vendor name, a dropped amount condition). A second cold review passed 17 of 19 and, with one separate check, found three more questions answered with unrelated spend figures (credit-note total, "paid this year", "spend this year"). All of them now have regression tests. Documented but not built:
+Twenty-six cases (including rewordings, follow-ups, dropped conditions, unanswerable questions and the third cold review's cases) on 140 rows is a smoke test and regression guard, not proof of accuracy. Some cases use the same wording as examples in the interpreter's prompt (T5, T17, T20, T21), so they are not held out; the cold-review questions are. Manual testing found two bugs that the automated cases missed (wrong scope of notes, lost follow-up context). A first cold review with unscripted questions found two more (a dropped vendor name, a dropped amount condition). A second cold review passed 17 of 19 and, with one separate check, found three more questions answered with unrelated spend figures (credit-note total, "paid this year", "spend this year"). A third cold review passed 19 of 23 and found two more critical failures (single-invoice checks reporting no issue for missing values; a dropped vendor status in combined questions). All of these now have regression tests. Two findings of the third review are documented, not fixed: a payment-policy question about a named vendor is declined because of the word "paid", and "total spend in USD" is read as a filter on USD invoices rather than a conversion request. Documented but not built:
 - remaining cases from the review (an approval amount in another currency with no date, credit-note matching, policy-change and dirty-data fixtures, prompt injection);
 - checks that totals add up across groupings;
 - a production pilot measuring analyst agreement, false flags, missed exceptions, and time to verify an answer.

@@ -353,6 +353,11 @@ def approval_tier(ctx: Context, p: ApprovalTierParams) -> ToolOutput:
     )
 
 
+def _text(value: Any) -> str | None:
+    """A text field, or None when missing. Missing values load as NaN, and NaN is truthy in Python."""
+    return value if isinstance(value, str) and value.strip() else None
+
+
 def invoice_check(ctx: Context, p: InvoiceCheckParams) -> ToolOutput:
     df = ctx.data.invoices
     row_df = df[df["invoice_number"] == p.invoice_number]
@@ -360,6 +365,7 @@ def invoice_check(ctx: Context, p: InvoiceCheckParams) -> ToolOutput:
         raise NotFound(f"{p.invoice_number} is not in the invoice data.")
     require_eur(row_df)
     r = row_df.iloc[0]
+    po, approver = _text(r["po_number"]), _text(r["approved_by"])  # a missing value loads as NaN, which is truthy
     pol = ctx.policy
     checks: list[dict[str, str]] = []
     required_role = None
@@ -374,17 +380,17 @@ def invoice_check(ctx: Context, p: InvoiceCheckParams) -> ToolOutput:
         if r["amount_eur"] >= pol.po_threshold_eur:
             checks.append({
                 "clause": "2.1", "rule": f"PO required at {eur(pol.po_threshold_eur)} or above",
-                "result": "ok" if r["po_number"] else "flag",
-                "detail": f"PO number recorded: {r['po_number']} (validity and issue date cannot be checked)."
-                if r["po_number"] else
+                "result": "ok" if po else "flag",
+                "detail": f"PO number recorded: {po} (validity and issue date cannot be checked)."
+                if po else
                 "No PO number: potential maverick spend. Blanket PO (§2.3) or emergency exception (§9.1) cannot be checked.",
             })
         else:
             checks.append({"clause": "2.1", "rule": "PO required", "result": "not_applicable",
                            "detail": f"Below the {eur(pol.po_threshold_eur)} PO threshold."})
         checks.append({
-            "clause": "3.1", "rule": "Approver recorded", "result": "ok" if r["approved_by"] else "flag",
-            "detail": f"Recorded approver: {r['approved_by']}." if r["approved_by"] else
+            "clause": "3.1", "rule": "Approver recorded", "result": "ok" if approver else "flag",
+            "detail": f"Recorded approver: {approver}." if approver else
             "No approver recorded: hold, may not be paid.",
         })
         checks.append({
@@ -420,7 +426,7 @@ def invoice_check(ctx: Context, p: InvoiceCheckParams) -> ToolOutput:
             "amount": float(r["amount"]),
             "currency": r["currency"],
             "amount_eur": float(r["amount_eur"]),
-            "approved_by": r["approved_by"],
+            "approved_by": approver,
             "required_role": required_role,
             "po_threshold_eur": pol.po_threshold_eur,
             "checks": checks,
