@@ -1,0 +1,222 @@
+# Evaluation results: openai/gpt-6-luna via https://openrouter.ai/api/v1
+
+- Run: 2026-11-05 05:46 to 05:48 UTC; 3 run(s) per case; worst run counts.
+- Expected answers: `eval/oracle.py` (independent pandas implementation; shares only the data files).
+
+## Critical errors
+
+- **T20** run 1: `evidence.rows` (system): missing [], extra ['INV-20001', 'INV-20002', 'INV-20003', 'INV-20004', 'INV-20005']
+- **T20** run 1: `figures` (system): total 6886631.1 != 1131552.52
+- **T20** run 2: `evidence.rows` (system): missing [], extra ['INV-20001', 'INV-20002', 'INV-20003', 'INV-20004', 'INV-20005']
+- **T20** run 2: `figures` (system): total 6886631.1 != 1131552.52
+- **T20** run 3: `evidence.rows` (system): missing [], extra ['INV-20001', 'INV-20002', 'INV-20003', 'INV-20004', 'INV-20005']
+- **T20** run 3: `figures` (system): total 6886631.1 != 1131552.52
+- **T21** run 1: `status` (interpretation): answered with exceptions {'check': 'missing_po'}: a broader answer than asked
+- **T21** run 1: `no_partial_answer` (system): non-answer carries a result or evidence
+
+## Summary
+
+| Level | Result |
+|---|---|
+| Tools (no LLM) | 9/9 cases with no findings |
+| End-to-end + interpretation | 13/16 cases with no findings in any run; 1 with major findings; 2 with critical |
+| Failure injection (T16) | 3/3 scenarios pass |
+
+## End-to-end cases (actual results)
+
+| Case | Question | Expected | Actual status / tool (per run) | Params (run 1) | Worst | Findings |
+|---|---|---|---|---|---|---|
+| T1 | What are our top 5 vendors by total spend in 2025? | answered / spend | answered/spend; answered/spend; answered/spend | `{"group_by": "vendor", "top_n": 5}` | pass | - |
+| T1-v | Which 5 suppliers did we spend the most with last year? | answered / spend | answered/spend; answered/spend; answered/spend | `{"group_by": "vendor", "top_n": 5}` | pass | - |
+| T2 | What is our total spend with vendors based in Spain? | answered / spend | answered/spend; answered/spend; answered/spend | `{"countries": ["Spain"]}` | pass | - |
+| T3 | Who is allowed to approve an invoice of EUR 60,000? | answered / approval_tier | answered/approval_tier; answered/approval_tier; answered/approval_tier | `{"amount": 60000.0, "currency": "EUR"}` | pass | - |
+| T3-v | Who signs off on a 60k invoice? | answered / approval_tier | answered/approval_tier; answered/approval_tier; answered/approval_tier | `{"amount": 60000.0}` | pass | - |
+| T4 | Which invoices of EUR 1,000 or more have no PO, and who should they be flagged to? | answered / exceptions | answered/exceptions; answered/exceptions; answered/exceptions | `{"check": "missing_po"}` | pass | - |
+| T5 | What is our consulting spend? | clarification_needed / clarify | clarification_needed/clarify; clarification_needed/clarify; clarification_needed/clarify | `{"question": "Do you mean spend with vendors in the Consulting category, or invoices whose descriptions are consulting services?", "options": ["What is our spend with vendors in the Consulting category?", "What is our spend on invoices described as Q1, Q2, Q3, or Q4 consulting services?"]}` | major | clarification.follow_through: option 'What is our spend with vendors in the Consulting category?' -> clarification_needed/clarify {'question': 'Do you mean spend with vendors whose vendor-master category is Consulting, or invoices whose descriptions are Q1–Q4 consulting services?', 'options': ['What is our spend with vendors in the Consulting category?', 'What is our spend on invoices described as Q1, Q2, Q3, or Q4 consulting services?']}<br>clarification.follow_through: options did not cover both readings (covered: ['T5_description']) |
+| T5-v | How much went on consulting? | clarification_needed / clarify | clarification_needed/clarify; clarification_needed/clarify; clarification_needed/clarify | `{"question": "Do you mean spend with vendors in the Consulting category, or spend on invoices with consulting-services descriptions?", "options": ["How much was spent with vendors in the Consulting category?", "How much was spent on invoices described as Q1, Q2, Q3, or Q4 consulting services?"]}` | pass | - |
+| T6 | Was INV-20008 approved by someone with sufficient authority? | answered / invoice_check | answered/invoice_check; answered/invoice_check; answered/invoice_check | `{"invoice_number": "INV-20008"}` | pass | - |
+| T8 | What was our total spend in 2024? | declined / decline | declined/decline; declined/decline; declined/decline | `{"reason": "outside_data_period", "explanation": "The available invoice data covers 2025 only, so total spend for 2024 cannot be determined."}` | pass | - |
+| T11 | Which invoices are missing an approver? | answered / exceptions | answered/exceptions; answered/exceptions; answered/exceptions | `{"check": "missing_approver"}` | pass | - |
+| T17 | Which invoices of EUR 1,000 or more have no PO? → How about just the invoices from CC-FIN-100? | answered / exceptions | answered/exceptions; answered/exceptions; answered/exceptions | `{"check": "missing_po", "cost_centers": ["CC-FIN-100"]}` | pass | - |
+| T18 | Which invoices of EUR 1,000 or more have no PO? → What is our total spend with vendors based in Spain? | answered / spend | answered/spend; answered/spend; answered/spend | `{"countries": ["Spain"]}` | pass | - |
+| T19 | How about just the invoices from CC-FIN-100? | clarification_needed / clarify | clarification_needed/clarify; clarification_needed/clarify; clarification_needed/clarify | `{"question": "What would you like to know about invoices from CC-FIN-100?", "options": ["What was the total spend for invoices from CC-FIN-100 in 2025?", "Which invoices from CC-FIN-100 need follow-up for a missing PO?", "Which invoices from CC-FIN-100 need follow-up for a missing approver?", "Which invoices from CC-FIN-100 are from non-active vendors?"]}` | pass | - |
+| T20 | How much did we spend with BioReagent Direct? | answered / spend | answered/spend; answered/spend; answered/spend | `{"group_by": "vendor"}` | critical | interpretation.params: vendor_ids=None (expected ['V-1008'])<br>evidence.rows: missing [], extra ['INV-20001', 'INV-20002', 'INV-20003', 'INV-20004', 'INV-20005']<br>figures: total 6886631.1 != 1131552.52 |
+| T21 | Show me invoices over EUR 50,000 without a PO | clarification_needed or declined / - | answered/exceptions; declined/decline; declined/decline | `{"check": "missing_po"}` | critical | status: answered with exceptions {'check': 'missing_po'}: a broader answer than asked<br>no_partial_answer: non-answer carries a result or evidence<br>consistency: 2 distinct interpretations / 1 distinct answers across runs |
+
+## Tools level (canonical parameters, no LLM)
+
+| Case | Findings |
+|---|---|
+| T1 | pass |
+| T2 | pass |
+| T3 | pass |
+| T4 | pass |
+| T6 | pass |
+| T11 | pass |
+| T17 | pass |
+| T18 | pass |
+| T20 | pass |
+
+## Failure injection (T16)
+
+| Scenario | /ask HTTP | status | error code | /summary HTTP | Result |
+|---|---|---|---|---|---|
+| T16 timeout | 502 | error | llm_timeout | 200 | pass |
+| T16 malformed_tool_call | 502 | error | llm_invalid_arguments | 200 | pass |
+| T16 invalid_parameters | 502 | error | invalid_params | 200 | pass |
+
+Latency per /ask (incl. LLM): median 1473 ms, max 7814 ms over 48 calls.
+
+LLM usage per question: median 3330 prompt + 45 completion tokens; median cost USD 0.00007, total USD 0.0041 over 48 calls (as reported by the provider). Clarification follow-through calls are not included.
+
+## Answers (run 1)
+
+**T1**: What are our top 5 vendors by total spend in 2025?
+
+```
+Top 5 vendors by net spend:
+1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)
+2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)
+3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)
+4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)
+5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)
+These 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).
+```
+
+**T1-v**: Which 5 suppliers did we spend the most with last year?
+
+```
+Top 5 vendors by net spend:
+1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)
+2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)
+3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)
+4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)
+5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)
+These 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).
+```
+
+**T2**: What is our total spend with vendors based in Spain?
+
+```
+Net spend (countries = Spain): EUR 2,631,938.81 across 49 invoices.
+```
+
+**T3**: Who is allowed to approve an invoice of EUR 60,000?
+
+```
+An invoice of EUR 60,000.00 requires approval by: Finance Director (policy §3, tier "50,000.01 – 250,000").
+```
+
+**T3-v**: Who signs off on a 60k invoice?
+
+```
+An invoice of EUR 60,000.00 requires approval by: Finance Director (policy §3, tier "50,000.01 – 250,000").
+```
+
+**T4**: Which invoices of EUR 1,000 or more have no PO, and who should they be flagged to?
+
+```
+21 invoices at or above the PO threshold with no PO number (potential maverick spend), totalling EUR 1,131,481.11.
+By cost centre:
+- CC-FIN-100: 10 invoices, EUR 383,083.04
+- CC-COM-440: 5 invoices, EUR 277,102.48
+- CC-IT-550: 2 invoices, EUR 203,183.42
+- CC-OPS-330: 3 invoices, EUR 191,864.23
+- CC-RND-210: 1 invoice, EUR 76,247.94
+Required action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (§2.2).
+```
+
+**T5**: What is our consulting spend?
+
+```
+Do you mean spend with vendors in the Consulting category, or invoices whose descriptions are consulting services?
+```
+
+**T5-v**: How much went on consulting?
+
+```
+Do you mean spend with vendors in the Consulting category, or spend on invoices with consulting-services descriptions?
+```
+
+**T6**: Was INV-20008 approved by someone with sufficient authority?
+
+```
+INV-20008, GBP 50,350.62 (EUR 60,435.49). Required approver under §3: Finance Director.
+- §2.1 PO required at EUR 1,000.00 or above: No issue detected in checked fields. PO number recorded: PO-78797 (validity and issue date cannot be checked).
+- §3.1 Approver recorded: No issue detected in checked fields. Recorded approver: r.okafor.
+- §3 Approver has authority (required role: Finance Director): Cannot determine from available data. The data does not map approvers to roles, so the approver's authority cannot be verified.
+- §4.1 Vendor is ACTIVE: No issue detected in checked fields. Vendor status ACTIVE in the vendor master (undated snapshot).
+- §7.2 No self-approval / segregation of duties: Cannot determine from available data. The data has no requester, so segregation of duties cannot be checked.
+Items that cannot be determined need information that is not in the data.
+```
+
+**T8**: What was our total spend in 2024?
+
+```
+I can't answer this: the question is about a period the invoice data does not cover.
+```
+
+**T11**: Which invoices are missing an approver?
+
+```
+25 invoices with no approver recorded, totalling EUR 1,057,076.74.
+By cost centre:
+- CC-FIN-100: 10 invoices, EUR 577,178.35
+- CC-OPS-330: 4 invoices, EUR 196,021.31
+- CC-COM-440: 5 invoices, EUR 177,549.22
+- CC-RND-210: 3 invoices, EUR 61,135.84
+- CC-IT-550: 3 invoices, EUR 45,192.02
+3 of these also have no PO number: INV-20042, INV-20123, INV-20128.
+Required action: Hold these invoices; they may not be paid until an approval is recorded (§3.1).
+```
+
+**T17**: Which invoices of EUR 1,000 or more have no PO? → How about just the invoices from CC-FIN-100?
+
+```
+10 invoices at or above the PO threshold with no PO number (potential maverick spend) (cost centers = CC-FIN-100), totalling EUR 383,083.04.
+By cost centre:
+- CC-FIN-100: 10 invoices, EUR 383,083.04
+Required action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (§2.2).
+```
+
+**T18**: Which invoices of EUR 1,000 or more have no PO? → What is our total spend with vendors based in Spain?
+
+```
+Net spend (countries = Spain): EUR 2,631,938.81 across 49 invoices.
+```
+
+**T19**: How about just the invoices from CC-FIN-100?
+
+```
+What would you like to know about invoices from CC-FIN-100?
+```
+
+**T20**: How much did we spend with BioReagent Direct?
+
+```
+Net spend by vendor:
+1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)
+2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)
+3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)
+4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)
+5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)
+6. Helix Consulting AG (V-1005): EUR 572,744.41 (14 invoices)
+7. Stellar Facilities Mgmt (V-1009): EUR 569,902.34 (11 invoices)
+8. MedPack Logistics BV (V-1004): EUR 527,908.65 (13 invoices)
+9. Crown Travel Partners (V-1010): EUR 415,550.83 (12 invoices)
+10. DataBridge Analytics Ltd (V-1003): EUR 178,421.39 (5 invoices)
+Total: EUR 6,886,631.10 across 140 invoices.
+```
+
+**T21**: Show me invoices over EUR 50,000 without a PO
+
+```
+21 invoices at or above the PO threshold with no PO number (potential maverick spend), totalling EUR 1,131,481.11.
+By cost centre:
+- CC-FIN-100: 10 invoices, EUR 383,083.04
+- CC-COM-440: 5 invoices, EUR 277,102.48
+- CC-IT-550: 2 invoices, EUR 203,183.42
+- CC-OPS-330: 3 invoices, EUR 191,864.23
+- CC-RND-210: 1 invoice, EUR 76,247.94
+Required action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (§2.2).
+```

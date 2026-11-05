@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 from pydantic import ValidationError
 
-from . import templates
+from . import coverage, templates
 from .data import MissingFxError
 from .fx import FxRateMissing
 from .llm import Interpreter, InterpreterError
@@ -94,6 +94,11 @@ class AssistantService:
             return self._error(base, interp, "fx_rate_missing",
                                f"{e} No result is returned because it would be incomplete.")
 
+        # Never answer a broader question than asked: recognisable conditions must be in the parameters.
+        # Runs after the tool's own validation, so invented values still fail closed as errors.
+        if missed := coverage.missed_conditions(question, call.name, params, self.ctx):
+            return self._not_covered(base, interp, missed)
+
         return AskResponse(
             **base,
             status="answered",
@@ -104,6 +109,19 @@ class AssistantService:
             assumptions=out.assumptions,
             limitations=out.limitations,
         )
+
+    def _not_covered(self, base: dict[str, Any], interp: Interpretation, missed: list[coverage.Missed]) -> AskResponse:
+        reasons = [m.reason for m in missed]
+        if any(m.out_of_period for m in missed):
+            return AskResponse(**base, status="declined", interpretation=interp,
+                               answer=templates.DECLINE_TEXT["outside_data_period"], limitations=reasons)
+        if all(m.expressible for m in missed):
+            text = ("Part of your question was not applied, so no answer is given: " + "; ".join(reasons)
+                    + ". Please rephrase it, for example by naming the vendor, country or cost centre explicitly.")
+            return AskResponse(**base, status="clarification_needed", interpretation=interp, answer=text,
+                               clarification=Clarification(question=text, options=[]), limitations=reasons)
+        return AskResponse(**base, status="declined", interpretation=interp,
+                           answer=templates.DECLINE_TEXT["unsupported_condition"], limitations=reasons)
 
     def _error(self, base: dict[str, Any], interp: Interpretation, code: str, message: str) -> AskResponse:
         return AskResponse(**base, status="error", interpretation=interp,
