@@ -89,13 +89,13 @@ All figures in this section were verified against the provided files (`invoices_
 | Finding | Implication |
 |---|---|
 | 21 invoices have no PO, 25 have no approver, and 3 have neither | Core inputs to the policy checks (§2.1, §3.1) |
-| 29 invoices come from non-ACTIVE vendors: PharmaPrint Studios is INACTIVE (17 invoices, Jan–Nov 2025) and Crown Travel Partners is ON_HOLD (12 invoices, Feb–Oct 2025) | Vendor status is a **current snapshot with no effective date**, so we cannot tell whether a vendor was inactive when it invoiced |
+| 29 invoices come from non-ACTIVE vendors: PharmaPrint Studios is INACTIVE (17 invoices, Jan–Nov 2025) and Crown Travel Partners is ON_HOLD (12 invoices, Feb–Oct 2025) | Vendor status is an **undated snapshot**: we know neither when it was taken nor when the status took effect, so we cannot tell whether a vendor was non-ACTIVE when it invoiced or when the invoice was processed |
 | 2 credit notes, both from Helix Consulting AG (V-1005): INV-20029 (EUR −52,749.39, "Cloud hosting") and INV-20096 (USD −29,534.55, "Conference & travel") | There is no reference to the original invoice. INV-20029 has no positive Helix "Cloud hosting" invoice to match against. INV-20096 has one plausible candidate (INV-20131, USD 85,116.01) |
 | Invoice descriptions are independent of vendor category. For example, the Travel vendor bills software licences | "Consulting spend" is ambiguous: by vendor category it is 14 invoices, by description 13 invoices, with **no overlap** |
 | `approved_by` is a username (5 people, or blank). All 5 approve invoices with a native amount above 50,000 | We cannot verify whether an approver had sufficient authority |
 | `cost_center` is a code (5 cost centres) with no owner | For §2.2 we can name the cost centre to flag, but not its owner |
-| **No FX rates are provided.** 35 invoices fall on weekends or TARGET holidays (16 of them non-EUR) | A rule for dates with no published rate is needed (see 2.3) |
-| 13 non-EUR invoices have a native amount between 0.8× and 1.25× an approval or PO threshold | The approval tier can change after conversion, so tiers must be applied to the EUR amount, never the native amount |
+| **No FX rates are provided in the pack.** ECB rates were retrieved separately (`data/fx/`). 35 invoices fall on weekends or TARGET holidays; 16 of them are non-EUR, and the ECB file confirms no rate on those dates | A rule for dates with no published rate is needed (see 2.3); all 51 non-EUR invoices are covered with it |
+| With actual ECB rates, 4 invoices fall in a different approval tier once converted: INV-20065 (GBP 47,368.81 → EUR 54,185.32, Finance Director) and INV-20071, INV-20095, INV-20112 (USD 50–53k → EUR 43–49k, Department Head) | Tiers must be applied to the EUR amount, never the native amount |
 | Quarter labels in descriptions ("Q1 consulting services") match the invoice dates | No conflict to handle |
 
 ### 2.2 Policy: mapping rules to the data
@@ -120,7 +120,7 @@ Rules are classified as **checkable**, **partially checkable**, or **cannot be d
 |---|---|---|
 | §2.1 PO required at ≥ EUR 1,000 | Whether a PO number is present (21 missing; the smallest is EUR 2,026.78, so all 21 are above the threshold) | Whether the PO is valid, or was issued **before** the work started (no PO master or PO dates) |
 | §2.2 Flag maverick spend | The list of invoices without a PO, grouped by cost centre and quarter | The cost-centre owner; whether the invoice was already reported |
-| §4.1 ACTIVE vendors only | Invoices from vendors that are **currently** INACTIVE or ON_HOLD (29). The required action is escalation to Procurement Excellence, not rejection | Vendor status at the invoice date; whether the invoice was processed or paid |
+| §4.1 ACTIVE vendors only | Invoices from vendors with INACTIVE or ON_HOLD status in the (undated) vendor master (29). The required action is escalation to Procurement Excellence, not rejection | Vendor status at the invoice date; whether the invoice was processed or paid |
 | §6.1 Credit notes | Identify negative amounts (2) | Matching to the original invoice (no reference); 90-day ageing (no matching status) |
 
 **Cannot be determined**
@@ -176,7 +176,7 @@ My original questions, with the decisions taken:
 | **More rules** | A few rules written in code | A rule registry stored as data: clause ID, logic, required fields, whether it can be checked, version. Rules extracted with an LLM are reviewed by people before use, never applied directly |
 | **Dirty data** | Clean data; validated on load | A validation layer at ingestion (schema, types, currency codes, dates, duplicates, unknown vendors, sign conventions). Bad rows are quarantined and reported, and data-quality issues appear in the answer |
 | **Policy changes** | One policy version (v3.2, effective 2025-01-01) | Version policies by effective date; check each invoice against the policy in force on its date; stamp the policy version on every answer |
-| **Vendor status history** | Current snapshot only | A status history with effective dates, to check status at the invoice or payment date |
+| **Vendor status history** | Undated snapshot only | A status history with effective dates, to check status at the invoice or payment date |
 | **FX** | Static ECB file | A scheduled, versioned rate import with gap and anomaly checks |
 
 
@@ -194,7 +194,7 @@ The goal is to find critical errors and report actual behaviour per case, not on
 
 **Expected answers** are computed by a separate script (pandas) that does not reuse application code. The only shared input is the ECB rate file.
 
-**FX prerequisite:** figures use actual ECB reference rates, stored in a versioned file with source and retrieval date. Rates are never assumed or generated. Until real rates are available, cases that depend on conversion are reported as **blocked**, not passed.
+**FX prerequisite:** figures use actual ECB reference rates, stored in a versioned file with source and retrieval date. Rates are never assumed or generated. Rates are in `data/fx/` (see `data/fx/SOURCE.md`). If a required rate is missing, the dependent case is reported as **blocked**, not passed.
 
 ### 3.2 Failure severity
 
