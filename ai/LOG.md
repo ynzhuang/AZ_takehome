@@ -17,6 +17,7 @@ No secrets and no raw chat history.
 | 5. Backend | "Backend first with tests; OpenRouter with configurable model; .env support; no keys in git; keep this log; scan for credentials before pushing." | Real ECB rates only, never assumed; be explicit about which providers were actually tested; review the backend before the frontend |
 | 6. Frontend | "Vite + React + TypeScript, keep it simple. Key findings and limitations first, evidence in collapsible tables. Handle all response states. Change 'NO ISSUE FOUND' wording. Then run the full app and evaluation again, keep the original reports including the checker issue." | Architecture stays in the README (no design §4); check results worded as "No issue detected in checked fields" |
 | 7. README | "Move the write-up after the introduction, use my wording and only fix grammar, remove the old write-up, keep the technical sections unchanged, replace the time estimate with a placeholder, check links and numbers, don't change app code." Then: "Add back a short cost estimate for 200 users, clear that it's only model API cost based on assumptions." | The write-up is in my own words; time spent is left for me to fill in; the cost estimate covers LLM API calls only, with its assumptions stated |
+| 8. Manual testing | "For top 5 vendors, the answer says 29 invoices from non-active vendors and includes 2 credit notes. Those seem to be from the full dataset, not the top 5 vendors. Please check." | Confirm, fix with a regression test, and make the evaluation able to catch this kind of error |
 
 ## 2. Corrections the review produced
 
@@ -44,6 +45,7 @@ No secrets and no raw chat history.
 | Re-running the evaluation would overwrite earlier reports | Reports renamed by run (`eval/results/README.md`); new runs are timestamped by default. Run 1's JSON had already been overwritten by run 2; its Markdown report is kept |
 | Production cost was an estimate | Token usage and provider-reported cost are now captured per question and summarised in each evaluation report |
 | The AI-drafted README write-up was not in my words, and its time estimate came from git history, which misses my planning and review time | Replaced with my own write-up (grammar fixes only); time spent is a placeholder for me to fill in |
+| **Found by my manual testing, missed by the evaluation:** for "top 5 vendors", the notes said 29 non-active invoices, 2 credit notes and 51 converted invoices. These described all 140 invoices, not the 85 invoices of the 5 vendors shown (correct: 17, 0, 32; both credit notes belong to Helix, which is not in the top 5). Figures and evidence rows were correct | Root cause: `spend()` computed notes over all filtered invoices instead of the rows shown. Fixed: notes describe the rows shown; a scope line says the ranking and total cover all invoices; credit notes outside the shown vendors are named separately. Added a failing-first unit test and a `notes_vs_evidence` evaluation check (critical). Run 4 (unfixed code) kept to show the check catches it; run 5 after the fix. Lesson: the evaluation checked figures and evidence but not whether the explanatory notes matched the evidence |
 | The cost estimate was removed together with the old write-up | Re-added as a short, assumption-based estimate of model API cost only (about USD 50/month with Haiku, USD 4/month with gpt-6-luna, for 200 users × 20 questions per working day), explicitly not total production cost |
 
 ## 4. Verification actually run (2026-11-05)
@@ -51,6 +53,7 @@ No secrets and no raw chat history.
 - Backend: 65 pytest tests passed (no network).
 - Evaluation, run 3 (after the frontend), 3 runs per case: 0 critical errors and 11/11 cases with no findings for both `anthropic/claude-haiku-5.5` and `openai/gpt-6-luna`; failure injection 3/3.
 - Full app: two backends (one with an unreachable LLM endpoint) plus the Vite dev server, driven by `frontend/e2e/ui_smoke.mjs`: 24/24 UI checks passed. Screenshots in `docs/screenshots/` were reviewed by eye, which is how the duplicated invoice-check text and the overlapping composer were found.
+- Notes-scope fix: unit test failed before the fix and passes after (66 tests passed). Evaluation run 4 (unfixed code, new check): critical errors in T1 and T1-v in every run and at the tools level. Run 5 (fixed), both models: 0 critical, 11/11 cases with no findings, failure injection 3/3. UI smoke test re-run: 24/24 passed; top-5 screenshot regenerated and checked by eye.
 - README restructure: technical sections confirmed byte-for-byte unchanged; all relative links resolve; figures checked against the run 2 and run 3 reports; backend tests re-run (65 passed). No app code changed.
 
 ## 5. Prompts in the product

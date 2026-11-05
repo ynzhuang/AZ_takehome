@@ -185,6 +185,12 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
         if not any(abs(v - a) <= 0.01 for a in allowed):
             fail("answer_consistency", CRITICAL, "display", f"EUR {m} in answer not in result")
 
+    # Notes must describe the evidence rows (added after manual testing found top-5 notes
+    # computed over the whole dataset). Counts and EUR totals stated in assumptions/limitations
+    # are compared with the rows actually cited.
+    if tool == "spend":
+        f += [dict(x, severity=CRITICAL, layer="system") for x in notes_vs_evidence(r)]
+
     # Required limitations / assumptions
     lim = " ".join(r["limitations"])
     for pat in case.get("required_limitations", []):
@@ -205,6 +211,38 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
         if named:
             fail("forbidden_claim", CRITICAL, "display", f"names approver(s) {named}")
     return f
+
+
+def _eur(text: str) -> float:
+    return float(text.replace(",", ""))
+
+
+def notes_vs_evidence(r: dict) -> list[dict]:
+    """Disclosures in assumptions/limitations must match the cited rows (not a wider set)."""
+    rows = r["evidence"]["rows"]
+    notes = " ".join(r["assumptions"] + r["limitations"])
+    out = []
+
+    def bad(detail):
+        out.append({"check": "notes_vs_evidence", "detail": detail})
+
+    non_active = [x for x in rows if x["vendor_status"] != "ACTIVE"]
+    m = re.search(r"Includes (\d+) invoice\(s\) \(EUR (-?[\d,]+\.\d\d)\) from vendors that are not ACTIVE", notes)
+    if m and (int(m[1]) != len(non_active) or abs(_eur(m[2]) - sum(x["amount_eur"] for x in non_active)) > 0.01):
+        bad(f"non-ACTIVE note says {m[1]} invoices / EUR {m[2]}; evidence has {len(non_active)}")
+    if non_active and not m:
+        bad(f"{len(non_active)} non-ACTIVE invoices in evidence but no disclosure")
+    credits = [x for x in rows if x["amount"] < 0]
+    m = re.search(r"Includes (\d+) credit note\(s\) totalling EUR (-?[\d,]+\.\d\d)", notes)
+    if m and (int(m[1]) != len(credits) or abs(_eur(m[2]) - sum(x["amount_eur"] for x in credits)) > 0.01):
+        bad(f"credit-note note says {m[1]} / EUR {m[2]}; evidence has {len(credits)}")
+    if credits and not m:
+        bad(f"{len(credits)} credit notes in evidence but no disclosure")
+    converted = [x for x in rows if x["currency"] != "EUR"]
+    m = re.search(r"(\d+) non-EUR invoice\(s\) converted", notes)
+    if m and int(m[1]) != len(converted):
+        bad(f"FX note says {m[1]} converted invoices; evidence has {len(converted)}")
+    return out
 
 
 FREE_TEXT_PARAMS = {"question", "options", "explanation"}  # LLM wording; compared by meaning, not text
@@ -329,6 +367,7 @@ def main() -> int:
                              "tool": body["interpretation"].get("tool"), "params": body["interpretation"].get("params"),
                              "answer": body["answer"], "latency_ms": int((time.monotonic() - t) * 1000),
                              "usage": body["interpretation"].get("usage"),
+                             "assumptions": body["assumptions"], "limitations": body["limitations"],
                              "findings": findings})
             # consistency across runs: same meaning (status, tool, applied params), same templated answer
             sig = {json.dumps([r["status"], r["tool"], semantic_params(r["params"])], sort_keys=True) for r in runs}

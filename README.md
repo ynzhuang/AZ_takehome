@@ -25,7 +25,7 @@ For evaluation, I focused on three things: whether the LLM understands the quest
 
 For production with 200 Finance users, I would consider role-based access control (since different users may have different permissions), real data integration, and audit trails under policy §8.2. I would also collect human-labeled examples to evaluate and improve performance. If policy documents become large and complex, I would consider RAG with a vector database. Production would also need policy versioning, data validation, CI/CD, and monitoring of latency, errors and costs. Before deployment, I would run a pilot with Finance users to check accuracy, missed exceptions and usability.
 
-**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00059 per question with `anthropic/claude-haiku-5.5` and USD 0.00005 with `openai/gpt-6-luna` (run 3, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 50/month with Haiku** or **USD 4/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
+**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00059 per question with `anthropic/claude-haiku-5.5` and USD 0.00005 with `openai/gpt-6-luna` (run 5, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 50/month with Haiku** or **USD 4/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
 
 ### 4. Optional enhancement: evaluation set and scoring script
 
@@ -132,8 +132,8 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
 
 | Provider | Model | Status |
 |---|---|---|
-| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 3 separate evaluation runs |
-| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 2 separate evaluation runs |
+| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 5 separate evaluation runs |
+| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 3 separate evaluation runs |
 | Stub (`LLM_PROVIDER=stub`) | keyword rules | Runs offline. Not an LLM; it fails some reworded questions. The UI header labels it "(not an LLM)" |
 | OpenAI direct, Ollama, other OpenAI-compatible APIs | — | **Untested.** They should work if they support tools and `tool_choice: "required"` |
 
@@ -192,7 +192,7 @@ HTTP status codes:
 
 | What | Command | Result (2026-11-05) |
 |---|---|---|
-| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **65 passed** |
+| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **66 passed** |
 | Evaluation (uses the LLM in `.env`) | `backend/.venv/bin/python eval/run_eval.py --runs 3` | See below |
 | UI smoke test against the running app (optional; needs Playwright) | `cd frontend && node e2e/ui_smoke.mjs` | **24/24 checks passed** (real backend; LLM-down case used a backend pointed at an unreachable LLM endpoint) |
 | Frontend type check and build | `cd frontend && npm run build` | Passes |
@@ -204,15 +204,16 @@ HTTP status codes:
 - Clarification options are re-asked to check they get answered correctly.
 - Failures are injected: timeout, malformed tool call, invalid parameters.
 
-**Results, final run (run 3):** 11 cases (T1–T6, T8, T11, plus rewordings of T1, T3 and T5) and 3 injected failures.
+**Results, final run (run 5):** 11 cases (T1–T6, T8, T11, plus rewordings of T1, T3 and T5) and 3 injected failures.
 
 | Model (OpenRouter) | Critical errors | Cases with no findings | Tools level | Failure injection | Median latency | Median tokens per question | Median cost per question |
 |---|---|---|---|---|---|---|---|
-| `anthropic/claude-haiku-5.5` | 0 | 11/11 | 6/6 | 3/3 | 880 ms | 5,561 + 65 | USD 0.00059 |
-| `openai/gpt-6-luna` | 0 | 11/11 | 6/6 | 3/3 | 1,174 ms | 2,888 + 24 | USD 0.00005 |
+| `anthropic/claude-haiku-5.5` | 0 | 11/11 | 6/6 | 3/3 | 905 ms | 5,561 + 65 | USD 0.00059 |
+| `openai/gpt-6-luna` | 0 | 11/11 | 6/6 | 3/3 | 1,161 ms | 2,888 + 24 | USD 0.00005 |
 
 **History, kept in full in [`eval/results/README.md`](eval/results/README.md):**
 - **Run 1** flagged 4 "major" consistency findings. These were a **checker issue**: the check compared LLM-written wording rather than meaning. After the fix, run 2 and run 3 are clean.
+- **Manual testing found a bug the evaluation had missed:** for "top 5 vendors", the notes (non-active invoices, credit notes, converted invoices) described all 140 invoices instead of the 85 invoices of the vendors shown. The figures were correct. A new check that notes must match the evidence rows reported critical errors in T1 and T1-v on the unfixed code (run 4). After the fix, run 5 is clean. Runs 1–3 did not include this check.
 - A stub dry run showed the scorer does catch failures. It also found a real defect: a figure appeared in the answer text but not in the result. That defect was fixed.
 - **Caveat:** 11 questions over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
 
