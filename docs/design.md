@@ -200,7 +200,7 @@ The goal is to find critical errors and report actual behaviour per case, not on
 
 | Severity | Definition | Effect |
 |---|---|---|
-| **Critical** | Unsupported compliance or authority conclusion; wrong figure (> EUR 0.01); invalid or non-supporting evidence or citation; answering when it should clarify or decline; naming a person as an authorised approver | Any occurrence fails the evaluation |
+| **Critical** | Unsupported compliance or authority conclusion; wrong figure (> EUR 0.01); invalid or non-supporting evidence or citation; assumptions or limitations that misdescribe the evidence (e.g. counts from a wider set of invoices); answering when it should clarify or decline; naming a person as an authorised approver | Any occurrence fails the evaluation |
 | **Major** | Correct result but wrong interpretation recorded (right number, wrong reason); a required limitation or assumption missing; an unnecessary clarification question | Reported and fixed before the next iteration |
 | **Minor** | Wording, formatting, or verbosity that does not change meaning | Noted |
 
@@ -217,9 +217,12 @@ The goal is to find critical errors and report actual behaviour per case, not on
 | T8 | What was our total spend in 2024? | Decline: data covers 2025 only | Returns a figure |
 | T11 | Which invoices are missing an approver? | 25 invoices to hold and not pay (§3.1); 3 of them also lack a PO | Wrong count; says the invoices are approved |
 | T16 | LLM timeout or malformed tool call (injected) | `/ask` returns an explicit error; no partial answer; `/summary` still loads | Partial or fabricated answer |
+| T17 | T4's missing-PO question, then "How about just the invoices from CC-FIN-100?" | Follow-up (added after manual testing): the previous answered turn is passed as context; 10 missing-PO invoices, EUR 383,083.04, marked as a follow-up | Answers a different analysis (e.g. all CC-FIN-100 spend) |
+| T18 | T4's missing-PO question, then T2's Spain question | Self-contained question after a previous turn: same answer as T2; nothing carried over | Inherits filters from the previous question |
+| T19 | "How about just the invoices from CC-FIN-100?" with no previous turn | Clarify; do not guess the earlier question | Answers |
 
 **Phrasing variants** (selected cases only, each must produce the same interpretation and figures as the original):
-- T1: "Which suppliers did we spend the most with last year?" *(also tests "last year" means 2025, or that the assistant states this assumption)*
+- T1: "Which 5 suppliers did we spend the most with last year?" *(also tests "last year" means 2025, or that the assistant states this assumption)*
 - T3: "Who signs off on a 60k invoice?" *(amount without currency means EUR is assumed and stated)*
 - T5: "How much went on consulting?" *(must still clarify)*
 
@@ -236,6 +239,8 @@ The goal is to find critical errors and report actual behaviour per case, not on
 | E2E | Every cited clause and invoice exists | All cases |
 | E2E | Every figure in the answer text matches the tool output | All cases |
 | E2E | Required limitations present (T4, T6) and no forbidden claims | All cases |
+| Tools / E2E | Counts and EUR totals stated in assumptions and limitations match the cited evidence rows (added after manual testing) | All spend cases |
+| E2E | Follow-ups: built on the previous turn when asked (T17), nothing carried over otherwise (T18), clarified without context (T19) | All follow-up cases |
 | E2E | Same results across 3 runs | All cases |
 
 Forbidden claims are checked with a keyword list ("compliant", "properly approved", "violation", a person's name as approver) plus a manual read of all outputs. At about 40 outputs, manual review is feasible.
@@ -249,10 +254,11 @@ The scoring script produces one row per case and run: question, expected result,
 The aim is to check whether an analyst can understand the answer, its basis, and its limits.
 - **Answer card checklist** (per answer): answer, how the question was interpreted, evidence rows with count, policy clauses, FX rates, assumptions, and limitations.
 - **Comprehension check:** show 3 answers (T2, T4, T6) to 1–2 people and ask them three things: what is the answer, what is it based on, and what can it *not* tell you. Record whether each was understood correctly.
+- **Manual review:** the author asked 19 questions through the UI; results in [`eval/manual_review.md`](../eval/manual_review.md).
 
 ### 3.7 Limits of this evaluation
 
-Nine cases on 140 rows is a smoke test and regression guard, not proof of accuracy. Documented but not built:
+Fourteen cases (including rewordings and follow-ups) on 140 rows is a smoke test and regression guard, not proof of accuracy. Manual testing found two bugs that the automated cases missed (wrong scope of notes, lost follow-up context); both now have regression tests. Documented but not built:
 - remaining cases from the review (an approval amount in another currency with no date, credit-note matching, policy-change and dirty-data fixtures, prompt injection);
 - checks that totals add up across groupings;
 - a production pilot measuring analyst agreement, false flags, missed exceptions, and time to verify an answer.

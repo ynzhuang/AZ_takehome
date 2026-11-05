@@ -75,6 +75,19 @@ CASES = [
      "alt_tools": ["spend"]},  # a spend call with 2024 dates is declined by the period guard
     {"id": "T11", "question": "Which invoices are missing an approver?", "status": "answered", "tool": "exceptions",
      "params": {"check": "missing_approver"}, "rows": "T11", "required_clauses": ["3.1"]},
+    # Follow-ups (found in manual testing). Earlier turns are sent first; the last answered turn is passed as
+    # context exactly as the frontend does. T17: the follow-up must narrow the previous analysis (answering
+    # with a different analysis is critical). T18: a self-contained question after it must NOT inherit filters.
+    # T19: a referring question sent without context must be clarified, not guessed.
+    {"id": "T17", "turns": ["Which invoices of EUR 1,000 or more have no PO?"],
+     "question": "How about just the invoices from CC-FIN-100?", "status": "answered", "tool": "exceptions",
+     "params": {"check": "missing_po", "cost_centers": ["CC-FIN-100"]}, "rows": "T17", "required_clauses": ["2.1", "2.2"],
+     "follow_up": True},
+    {"id": "T18", "turns": ["Which invoices of EUR 1,000 or more have no PO?"],
+     "question": "What is our total spend with vendors based in Spain?", "status": "answered", "tool": "spend",
+     "params": {"countries": ["Spain"]}, "rows": "T2", "follow_up": False},
+    {"id": "T19", "question": "How about just the invoices from CC-FIN-100?", "status": "clarification_needed",
+     "tool": "clarify", "min_options": 0},  # without context, options can only be guesses; asking is what matters
 ]
 
 # --------------------------------------------------------------------------- checks
@@ -131,9 +144,14 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
     if case["tool"] == "approval_tier" and tool == "approval_tier" and params.get("currency") not in (None, "EUR"):
         fail("interpretation.params", MAJOR, "interpretation", f"currency={params.get('currency')}")
 
+    if "follow_up" in case and bool(interp.get("follow_up_to")) != case["follow_up"]:
+        fail("interpretation.follow_up", MAJOR, "interpretation",
+             f"follow_up_to={interp.get('follow_up_to')!r} (expected {'the previous question' if case['follow_up'] else 'none'})")
+
     if r["status"] != "answered":
-        if want == "clarification_needed" and r["status"] == want and len((r.get("clarification") or {}).get("options", [])) < 2:
-            fail("clarification.options", MAJOR, "interpretation", "fewer than 2 rewritten options")
+        min_options = case.get("min_options", 2)
+        if want == "clarification_needed" and r["status"] == want and len((r.get("clarification") or {}).get("options", [])) < min_options:
+            fail("clarification.options", MAJOR, "interpretation", f"fewer than {min_options} rewritten options")
         if r["status"] != "answered" and (r.get("result") or r["evidence"]["row_count"]):
             fail("no_partial_answer", CRITICAL, "system", "non-answer carries a result or evidence")
         return f
@@ -152,7 +170,7 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
             fail("figures", CRITICAL, "system", f"top5 {got} != {exp['T1']['top5']}")
         if abs(res.get("total_eur", 0) - exp["T1"]["total_eur"]) > 0.01:
             fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp['T1']['total_eur']}")
-    if key in ("T2", "T4", "T11") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
+    if key in ("T2", "T4", "T11", "T17") and abs(res.get("total_eur", 0) - exp[key]["total_eur"]) > 0.01:
         fail("figures", CRITICAL, "system", f"total {res.get('total_eur')} != {exp[key]['total_eur']}")
     if key == "T11" and res.get("also_missing_po") != exp["T11"]["also_missing_po"]:
         fail("figures", CRITICAL, "system", f"also_missing_po {res.get('also_missing_po')}")
@@ -185,6 +203,12 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
         if not any(abs(v - a) <= 0.01 for a in allowed):
             fail("answer_consistency", CRITICAL, "display", f"EUR {m} in answer not in result")
 
+    # Notes must describe the evidence rows (added after manual testing found top-5 notes
+    # computed over the whole dataset). Counts and EUR totals stated in assumptions/limitations
+    # are compared with the rows actually cited.
+    if tool == "spend":
+        f += [dict(x, severity=CRITICAL, layer="system") for x in notes_vs_evidence(r)]
+
     # Required limitations / assumptions
     lim = " ".join(r["limitations"])
     for pat in case.get("required_limitations", []):
@@ -205,6 +229,38 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
         if named:
             fail("forbidden_claim", CRITICAL, "display", f"names approver(s) {named}")
     return f
+
+
+def _eur(text: str) -> float:
+    return float(text.replace(",", ""))
+
+
+def notes_vs_evidence(r: dict) -> list[dict]:
+    """Disclosures in assumptions/limitations must match the cited rows (not a wider set)."""
+    rows = r["evidence"]["rows"]
+    notes = " ".join(r["assumptions"] + r["limitations"])
+    out = []
+
+    def bad(detail):
+        out.append({"check": "notes_vs_evidence", "detail": detail})
+
+    non_active = [x for x in rows if x["vendor_status"] != "ACTIVE"]
+    m = re.search(r"Includes (\d+) invoice\(s\) \(EUR (-?[\d,]+\.\d\d)\) from vendors that are not ACTIVE", notes)
+    if m and (int(m[1]) != len(non_active) or abs(_eur(m[2]) - sum(x["amount_eur"] for x in non_active)) > 0.01):
+        bad(f"non-ACTIVE note says {m[1]} invoices / EUR {m[2]}; evidence has {len(non_active)}")
+    if non_active and not m:
+        bad(f"{len(non_active)} non-ACTIVE invoices in evidence but no disclosure")
+    credits = [x for x in rows if x["amount"] < 0]
+    m = re.search(r"Includes (\d+) credit note\(s\) totalling EUR (-?[\d,]+\.\d\d)", notes)
+    if m and (int(m[1]) != len(credits) or abs(_eur(m[2]) - sum(x["amount_eur"] for x in credits)) > 0.01):
+        bad(f"credit-note note says {m[1]} / EUR {m[2]}; evidence has {len(credits)}")
+    if credits and not m:
+        bad(f"{len(credits)} credit notes in evidence but no disclosure")
+    converted = [x for x in rows if x["currency"] != "EUR"]
+    m = re.search(r"(\d+) non-EUR invoice\(s\) converted", notes)
+    if m and int(m[1]) != len(converted):
+        bad(f"FX note says {m[1]} converted invoices; evidence has {len(converted)}")
+    return out
 
 
 FREE_TEXT_PARAMS = {"question", "options", "explanation"}  # LLM wording; compared by meaning, not text
@@ -321,14 +377,22 @@ def main() -> int:
         for case in CASES:
             runs = []
             for i in range(args.runs):
+                # Earlier turns are sent first; like the frontend, only the last *answered* turn is passed as context.
+                context = None
+                for earlier in case.get("turns", []):
+                    prev = c.post("/ask", json={"question": earlier, **({"context": context} if context else {})}).json()
+                    if prev["status"] == "answered":
+                        it = prev["interpretation"]
+                        context = {"question": prev["question"], "tool": it["tool"], "params": it["params"]}
                 t = time.monotonic()
-                resp = c.post("/ask", json={"question": case["question"]})
+                resp = c.post("/ask", json={"question": case["question"], **({"context": context} if context else {})})
                 body = resp.json()
                 findings = check_e2e(case, body, exp)
                 runs.append({"run": i + 1, "http": resp.status_code, "status": body["status"],
                              "tool": body["interpretation"].get("tool"), "params": body["interpretation"].get("params"),
                              "answer": body["answer"], "latency_ms": int((time.monotonic() - t) * 1000),
                              "usage": body["interpretation"].get("usage"),
+                             "assumptions": body["assumptions"], "limitations": body["limitations"],
                              "findings": findings})
             # consistency across runs: same meaning (status, tool, applied params), same templated answer
             sig = {json.dumps([r["status"], r["tool"], semantic_params(r["params"])], sort_keys=True) for r in runs}
@@ -394,7 +458,8 @@ def render_report(label, settings, runs, started, finished, tool_results, e2e, t
         acts = "; ".join(f"{r['status']}/{r['tool']}" for r in x["runs"])
         fs = [f"{f['check']}: {f['detail']}" for r in x["runs"] for f in r["findings"]] + [f"{f['check']}: {f['detail']}" for f in x["consistency"]]
         fs = list(dict.fromkeys(fs))
-        L.append(f"| {c['id']} | {c['question']} | {c['status']} / {c['tool']} | {acts} | `{json.dumps(x['runs'][0]['params'])}` | "
+        q = " → ".join(c.get("turns", []) + [c["question"]])
+        L.append(f"| {c['id']} | {q} | {c['status']} / {c['tool']} | {acts} | `{json.dumps(x['runs'][0]['params'])}` | "
                  f"{x['worst'] or 'pass'} | {'<br>'.join(fs) or '-'} |")
     L += ["", "## Tools level (canonical parameters, no LLM)", "", "| Case | Findings |", "|---|---|"]
     L += [f"| {t['id']} | {'<br>'.join(f['check'] + ': ' + f['detail'] for f in t['findings']) or 'pass'} |" for t in tool_results]
@@ -416,7 +481,8 @@ def render_report(label, settings, runs, started, finished, tool_results, e2e, t
         L += ["", line + ". Clarification follow-through calls are not included."]
     L += ["", "## Answers (run 1)", ""]
     for x in e2e:
-        L += [f"**{x['case']['id']}**: {x['case']['question']}", "", "```", x["runs"][0]["answer"], "```", ""]
+        L += [f"**{x['case']['id']}**: {' → '.join(x['case'].get('turns', []) + [x['case']['question']])}", "", "```",
+              x["runs"][0]["answer"], "```", ""]
     return "\n".join(L)
 
 

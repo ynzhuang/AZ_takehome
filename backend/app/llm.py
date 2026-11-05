@@ -21,7 +21,7 @@ import httpx
 from .config import Settings
 from .data import Dataset
 from .policy import Policy
-from .schemas import TOOL_PARAMS
+from .schemas import TOOL_PARAMS, PreviousTurn
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "interpreter_system.md"
 
@@ -50,7 +50,20 @@ class ToolCall:
 class Interpreter(Protocol):
     label: str
 
-    def interpret(self, question: str) -> ToolCall: ...
+    def interpret(self, question: str, context: PreviousTurn | None = None) -> ToolCall: ...
+
+
+def build_user_message(question: str, context: PreviousTurn | None) -> str:
+    """The LLM sees at most one previous turn, as marked data. Without context: just the question."""
+    if context is None:
+        return question
+    return (
+        "<previous_turn>\n"
+        f"question: {context.question}\n"
+        f"interpretation: {context.tool} {json.dumps(context.params, sort_keys=True)}\n"
+        "</previous_turn>\n"
+        f"Current question: {question}"
+    )
 
 
 # --------------------------------------------------------------------------- prompt and tool schemas
@@ -115,17 +128,18 @@ class OpenAICompatibleInterpreter:
         self._client = httpx.Client(base_url=settings.llm_base_url, headers=headers,
                                     timeout=settings.llm_timeout_seconds, transport=transport)
 
-    def interpret(self, question: str) -> ToolCall:
+    def interpret(self, question: str, context: PreviousTurn | None = None) -> ToolCall:
         body = {
             "model": self._settings.llm_model,
             "temperature": 0,
             "max_tokens": 800,
             "messages": [
                 {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": question},
+                {"role": "user", "content": build_user_message(question, context)},
             ],
             "tools": self._tools,
             "tool_choice": "required",
+            "parallel_tool_calls": False,  # exactly one tool call per question, enforced by the API
         }
         start = time.monotonic()
         try:
@@ -163,6 +177,9 @@ class OpenAICompatibleInterpreter:
 # --------------------------------------------------------------------------- stub (no LLM)
 
 
+_FOLLOW_UP = re.compile(r"^\s*(how about|what about|and for|same for|just|only)\b|\b(those|these|them|instead)\b")
+
+
 class StubInterpreter:
     """Keyword rules for running without an LLM. Clearly labelled; not evaluated as the LLM."""
 
@@ -171,12 +188,24 @@ class StubInterpreter:
     def __init__(self, data: Dataset):
         self._data = data
 
-    def interpret(self, question: str) -> ToolCall:
-        return ToolCall(*self._rules(question), latency_ms=0)
+    def interpret(self, question: str, context: PreviousTurn | None = None) -> ToolCall:
+        return ToolCall(*self._rules(question, context), latency_ms=0)
 
-    def _rules(self, question: str) -> tuple[str, dict[str, Any]]:
+    def _rules(self, question: str, context: PreviousTurn | None = None) -> tuple[str, dict[str, Any]]:
         q = question.lower()
         catalog = self._data.catalog()
+        if _FOLLOW_UP.search(q):
+            if context is None:
+                return "clarify", {
+                    "question": "This seems to refer to an earlier question. Please ask it as a complete question.",
+                    "options": [],
+                }
+            args: dict[str, Any] = dict(context.params)
+            if ccs := [c for c in catalog["cost_centers"] if c.lower() in q]:
+                args["cost_centers"] = ccs
+            if countries := [c for c in catalog["countries"] if c.lower() in q]:
+                args["countries"] = countries
+            return context.tool, {**args, "follow_up": True}
         years = {int(y) for y in re.findall(r"\b(20\d\d)\b", q)}
         if years - {self._data.period_start.year}:
             return "decline", {"reason": "outside_data_period", "explanation": "Only 2025 invoices are available."}

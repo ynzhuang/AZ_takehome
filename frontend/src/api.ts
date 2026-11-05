@@ -9,6 +9,15 @@ export interface Interpretation {
   interpreter: string;
   latency_ms: number | null;
   usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number } | null;
+  /** Set when the interpreter built on the previous question sent as context. */
+  follow_up_to: string | null;
+}
+
+/** The last answered question and its interpretation, sent so follow-ups ("how about just CC-FIN-100?") work. */
+export interface PreviousTurn {
+  question: string;
+  tool: string;
+  params: Record<string, unknown>;
 }
 
 export interface EvidenceRow {
@@ -114,7 +123,7 @@ export const getHealth = () => getJson<Health>("/health");
  * POST /ask. The backend returns an AskResponse body for every outcome, including errors
  * (HTTP 502/503), so those are returned as data. Only transport failures throw.
  */
-export async function ask(question: string): Promise<AskResponse> {
+export async function ask(question: string, context?: PreviousTurn): Promise<AskResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ASK_TIMEOUT_MS);
   let res: Response;
@@ -122,7 +131,7 @@ export async function ask(question: string): Promise<AskResponse> {
     res = await fetch(`${BASE}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(context ? { question, context } : { question }),
       signal: controller.signal,
     });
   } catch (e) {

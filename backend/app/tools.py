@@ -152,6 +152,12 @@ def _group(df: pd.DataFrame, column: str, label) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- tools
 
 
+_GROUP_PLURAL = {
+    "vendor": "vendors", "country": "countries", "category": "vendor categories", "currency": "currencies",
+    "vendor_status": "vendor statuses", "cost_center": "cost centres",
+}
+
+
 def spend(ctx: Context, p: SpendParams) -> ToolOutput:
     if p.top_n and p.group_by == "none":
         raise InvalidParams("top_n requires group_by")
@@ -172,20 +178,36 @@ def spend(ctx: Context, p: SpendParams) -> ToolOutput:
     else:
         group_count = 0
 
-    credit = df[df["amount"] < 0]
+    # Notes describe the rows behind the figures shown (`rows`). With top_n these are only the
+    # top groups; the ranking and the overall total still cover every invoice in scope (`df`).
     assumptions = [
         "Spend = net invoiced amount in EUR: all invoices regardless of PO, approver or vendor status; "
         "credit notes reduce spend. Not approved or paid amounts (no payment data).",
         f"Period: invoice dates {_period_text(ctx, applied)}.",
     ]
-    if fx_note := _fx_assumption(df):
+    truncated = len(rows) < len(df)
+    if truncated:
+        plural = _GROUP_PLURAL[p.group_by]
+        assumptions.append(
+            f"These notes describe the {len(rows)} invoices of the {len(groups)} {plural} shown. "
+            f"The ranking and the {eur(total)} total cover all {len(df)} invoices of all {group_count} {plural}."
+        )
+    if fx_note := _fx_assumption(rows):
         assumptions.append(fx_note)
+    credit = rows[rows["amount"] < 0]
     if not credit.empty:
         assumptions.append(
             f"Includes {len(credit)} credit note(s) totalling {eur(credit['amount_eur'].sum())} "
             f"({', '.join(credit['invoice_number'])})."
         )
-    limitations = [n for n in [_status_note(df)] if n]
+    other_credit = df[(df["amount"] < 0) & ~df.index.isin(rows.index)]
+    if truncated and not other_credit.empty:
+        assumptions.append(
+            f"The {eur(total)} total also includes {len(other_credit)} credit note(s) totalling "
+            f"{eur(other_credit['amount_eur'].sum())} ({', '.join(other_credit['invoice_number'])}) "
+            f"from {_GROUP_PLURAL[p.group_by]} not shown."
+        )
+    limitations = [n for n in [_status_note(rows)] if n]
     if df.empty:
         limitations.append("No invoices match these filters.")
 

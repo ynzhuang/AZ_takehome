@@ -88,6 +88,16 @@ check("FX tier clarification", (await card.locator(".badge").innerText()) === "N
 await card.getByRole("button", { name: "Edit my question" }).click();
 check("Edit puts question back in the input", (await page.getByLabel("Question").inputValue()) === "Who can approve USD 55,000?");
 
+// 6b. Follow-up: the last answered question is sent as context
+card = await askAndWait("Which invoices of EUR 1,000 or more have no PO?");
+check("missing-PO question answered", (await card.locator(".answer").innerText()).startsWith("21 invoices"));
+card = await askAndWait("How about just the invoices from CC-FIN-100?");
+const fuText = await card.innerText();
+check("follow-up answered", (await card.locator(".badge").innerText()) === "Answered");
+check("follow-up label shows previous question", fuText.includes("Follow-up to: “Which invoices of EUR 1,000 or more have no PO?”"));
+check("follow-up = 10 missing-PO invoices, EUR 383,083.04", fuText.includes("10 invoices at or above the PO threshold") && fuText.includes("EUR 383,083.04"));
+await card.screenshot({ path: `${SHOTS}07-follow-up.png` });
+
 // 7. Network failure (simulated by aborting the request in the browser)
 await page.route("**/api/ask", (route) => route.abort());
 await page.getByLabel("Question").fill("What is our total spend with vendors based in Spain?");

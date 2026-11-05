@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 # --------------------------------------------------------------------------- tool parameters
 
@@ -14,7 +14,12 @@ class _Params(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class SpendParams(_Params):
+class _AnswerParams(_Params):
+    # Transparency flag, not used by the tools: the service turns it into interpretation.follow_up_to.
+    follow_up: bool = Field(False, description="true if this question builds on the previous question; else false.")
+
+
+class SpendParams(_AnswerParams):
     """Net invoiced spend in EUR (credit notes included, all invoice and vendor statuses)."""
 
     group_by: Literal["none", "vendor", "country", "category", "currency", "vendor_status", "cost_center"] = Field(
@@ -32,7 +37,7 @@ class SpendParams(_Params):
     date_to: date | None = Field(None, description="Filter: invoice date on or before (YYYY-MM-DD). Omit for the whole data period.")
 
 
-class ExceptionsParams(_Params):
+class ExceptionsParams(_AnswerParams):
     """List invoices that need follow-up under a policy rule."""
 
     check: Literal["missing_po", "missing_approver", "non_active_vendor"] = Field(
@@ -46,7 +51,7 @@ class ExceptionsParams(_Params):
     date_to: date | None = Field(None, description="Filter: invoice date on or before (YYYY-MM-DD).")
 
 
-class ApprovalTierParams(_Params):
+class ApprovalTierParams(_AnswerParams):
     """Required approver role for an amount, from the policy approval matrix (§3)."""
 
     amount: float = Field(gt=0, description="Invoice amount as stated in the question (e.g. '60k' -> 60000).")
@@ -54,13 +59,13 @@ class ApprovalTierParams(_Params):
     invoice_date: date | None = Field(None, description="Invoice date (YYYY-MM-DD), only if stated in the question.")
 
 
-class InvoiceCheckParams(_Params):
+class InvoiceCheckParams(_AnswerParams):
     """Check one invoice against the policy rules that the data can support."""
 
     invoice_number: str = Field(pattern=r"^INV-\d+$", description="Invoice number, e.g. INV-20008.")
 
 
-class PolicyClausesParams(_Params):
+class PolicyClausesParams(_AnswerParams):
     """Quote policy clauses verbatim for general policy questions."""
 
     clause_ids: list[str] = Field(min_length=1, max_length=6, description="Clause IDs from the policy, e.g. ['6.1'].")
@@ -110,8 +115,26 @@ TOOL_ROUTE: dict[str, str] = {
 Status = Literal["answered", "clarification_needed", "declined", "error"]
 
 
+class PreviousTurn(BaseModel):
+    """The analyst's last answered question and its validated interpretation (one turn, not chat history)."""
+
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1, max_length=500)
+    tool: Literal["spend", "exceptions", "approval_tier", "invoice_check", "policy_clauses"]
+    params: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _params_valid_for_tool(self) -> "PreviousTurn":
+        try:
+            TOOL_PARAMS[self.tool].model_validate(self.params)
+        except ValidationError as e:
+            raise ValueError(f"context.params are not valid for tool '{self.tool}': {e.errors()[0]['msg']}") from None
+        return self
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
+    context: PreviousTurn | None = None
 
 
 class Interpretation(BaseModel):
@@ -121,6 +144,7 @@ class Interpretation(BaseModel):
     interpreter: str  # which model / stub produced it
     latency_ms: int | None = None
     usage: dict[str, Any] | None = None  # LLM tokens / cost for this question
+    follow_up_to: str | None = None  # previous question, when the interpreter built on it
 
 
 class EvidenceRow(BaseModel):

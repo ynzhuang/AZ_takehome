@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ask, getHealth, type Health } from "./api";
+import { ask, getHealth, type Health, type PreviousTurn } from "./api";
 import { AnswerCard, type Turn } from "./components/AnswerCard";
 import { SummaryPanel } from "./components/SummaryPanel";
 
@@ -28,14 +28,27 @@ export default function App() {
     endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
   }, [turns]);
 
+  /** Context for follow-ups: only the last *answered* turn (not the whole chat). */
+  function lastAnsweredTurn(): PreviousTurn | undefined {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const t = turns[i];
+      if (t.state === "done" && t.response.status === "answered" && t.response.interpretation.tool) {
+        const it = t.response.interpretation;
+        return { question: t.response.question, tool: it.tool!, params: it.params };
+      }
+    }
+    return undefined;
+  }
+
   async function submit(question: string) {
     const q = question.trim();
     if (!q || busy) return;
+    const context = lastAnsweredTurn();
     const id = nextId.current++;
     setTurns((ts) => [...ts, { id, question: q, state: "pending" }]);
     setInput("");
     try {
-      const response = await ask(q);
+      const response = await ask(q, context);
       setTurns((ts) => ts.map((t) => (t.id === id ? { id, question: q, state: "done", response } : t)));
     } catch (e) {
       setTurns((ts) => ts.map((t) => (t.id === id ? { id, question: q, state: "failed", error: (e as Error).message } : t)));
@@ -110,6 +123,7 @@ export default function App() {
             <div className="composer-side">
               <button type="submit" disabled={busy || !input.trim()}>{busy ? "Working…" : "Ask"}</button>
               <span className="small muted">{input.length}/{MAX_LEN}</span>
+              <span className="small muted">Follow-ups can refer to your last answer.</span>
             </div>
           </form>
         </section>

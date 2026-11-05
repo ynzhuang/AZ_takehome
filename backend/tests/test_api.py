@@ -45,7 +45,7 @@ def test_answered_response_carries_interpretation_evidence_and_versions():
         code, r = ask(c, "Spain spend?")
     assert code == 200 and r["status"] == "answered"
     assert r["interpretation"] == {"tool": "spend", "route": "data", "params": {"countries": ["Spain"]},
-                                   "interpreter": "fake", "latency_ms": 1, "usage": None}
+                                   "interpreter": "fake", "latency_ms": 1, "usage": None, "follow_up_to": None}
     assert r["evidence"]["row_count"] == 49 == len(r["evidence"]["rows"])
     assert [c["id"] for c in r["evidence"]["clauses"]] == ["5.1"]
     assert r["evidence"]["fx_rates"] and r["versions"]["policy"] == "FIN-POL-014 v3.2"
@@ -117,6 +117,7 @@ def test_llm_client_parses_single_tool_call_and_omits_auth_without_key(ctx):
     assert (call.name, call.arguments) == ("spend", {"countries": ["Spain"]})
     assert seen["auth"] is None
     assert seen["body"]["tool_choice"] == "required" and seen["body"]["temperature"] == 0
+    assert seen["body"]["parallel_tool_calls"] is False
 
 
 def test_llm_client_sends_key_when_configured(ctx):
@@ -151,3 +152,78 @@ def test_tool_schemas_are_simple_and_constrained(ctx):
     text = json.dumps(tools)
     assert "anyOf" not in text and "$defs" not in text
     assert "Spain" in json.dumps(tools["spend"]["parameters"]["properties"]["countries"])
+
+
+# ----------------------------------------------------------------------------- follow-ups (one previous turn as context)
+
+PREV = {"question": "Which invoices of EUR 1,000 or more have no PO?", "tool": "exceptions", "params": {"check": "missing_po"}}
+FOLLOW = "How about just the invoices from CC-FIN-100?"
+
+
+def test_follow_up_context_reaches_interpreter_and_is_labelled():
+    fake = FakeInterpreter("exceptions", {"check": "missing_po", "cost_centers": ["CC-FIN-100"], "follow_up": True})
+    with client(fake) as c:
+        r = c.post("/ask", json={"question": FOLLOW, "context": PREV})
+    body = r.json()
+    assert r.status_code == 200 and body["status"] == "answered"
+    assert fake.received_context.question == PREV["question"] and fake.received_context.tool == "exceptions"
+    assert body["interpretation"]["follow_up_to"] == PREV["question"]
+    assert body["interpretation"]["params"] == {"check": "missing_po", "cost_centers": ["CC-FIN-100"]}  # flag stripped
+    assert body["result"]["count"] == 10 and body["result"]["total_eur"] == 383083.04
+
+
+def test_follow_up_flag_ignored_without_context():
+    fake = FakeInterpreter("spend", {"cost_centers": ["CC-FIN-100"], "follow_up": True})
+    with client(fake) as c:
+        body = c.post("/ask", json={"question": FOLLOW}).json()
+    assert fake.received_context is None and body["interpretation"]["follow_up_to"] is None
+
+
+@pytest.mark.parametrize("context", [
+    {"question": "q", "tool": "clarify", "params": {}},  # only answered tools can be context
+    {"question": "q", "tool": "run_sql", "params": {}},
+    {"question": "q", "tool": "exceptions", "params": {"check": "everything"}},  # invalid params for the tool
+    {"question": "q", "tool": "spend", "params": {"sql": "x"}},
+    {"question": "", "tool": "spend", "params": {}},
+    {"question": "q", "tool": "spend", "params": {}, "history": []},  # extra fields rejected
+])
+def test_invalid_context_is_rejected(context):
+    with client(FakeInterpreter("spend", {})) as c:
+        assert c.post("/ask", json={"question": FOLLOW, "context": context}).status_code == 422
+
+
+def test_llm_receives_previous_turn_only_when_given(ctx):
+    from app.schemas import PreviousTurn
+    seen = []
+
+    def handler(req):
+        seen.append(json.loads(req.content)["messages"])
+        return _completion([_call("spend", "{}")])
+
+    llm = _llm(ctx, handler)
+    llm.interpret(FOLLOW)
+    llm.interpret(FOLLOW, PreviousTurn(**PREV))
+    assert seen[0][-1] == {"role": "user", "content": FOLLOW}  # unchanged single-question behaviour
+    content = seen[1][-1]["content"]
+    assert len(seen[1]) == 2  # system + one user message: no chat history
+    assert "<previous_turn>" in content and PREV["question"] in content and '"check": "missing_po"' in content
+    assert content.endswith(f"Current question: {FOLLOW}")
+
+
+def test_stub_follow_up():
+    from app.schemas import PreviousTurn
+    with client() as c:  # stub interpreter
+        alone = c.post("/ask", json={"question": FOLLOW}).json()
+        with_ctx = c.post("/ask", json={"question": FOLLOW, "context": PREV}).json()
+    assert alone["status"] == "clarification_needed"
+    assert with_ctx["status"] == "answered" and with_ctx["result"]["count"] == 10
+    assert with_ctx["interpretation"]["follow_up_to"] == PREV["question"]
+    assert PreviousTurn(**PREV).tool == "exceptions"
+
+
+def test_real_system_prompt_renders(ctx):
+    """The prompt template is filled with str.format; literal braces must be escaped (regression)."""
+    from app.llm import build_system_prompt
+    prompt = build_system_prompt(ctx.data, ctx.policy)
+    assert "FIN-POL-014 v3.2" in prompt and "CC-FIN-100" in prompt
+    assert 'exceptions {"check": "missing_po"}' in prompt and "{period_start}" not in prompt

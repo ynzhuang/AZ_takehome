@@ -144,3 +144,25 @@ def test_invoice_check_labels_do_not_overclaim(ctx):
     labels = {c["result"]: c["label"] for c in out.result["checks"]}
     assert labels["ok"] == "No issue detected in checked fields"
     assert labels["cannot_determine"] == "Cannot determine from available data"
+
+
+def test_top_n_notes_describe_the_groups_shown(ctx):
+    """Notes (FX, credit notes, vendor status) must describe the evidence rows, not the whole dataset."""
+    out = spend(ctx, SpendParams(group_by="vendor", top_n=5))
+    rows = out.rows
+    notes = " ".join(out.assumptions + out.limitations)
+    assert (rows["amount"] < 0).sum() == 0  # both credit notes belong to Helix (V-1005), not in the top 5
+    assert "Includes 2 credit note" not in notes
+    assert "from vendors not shown" in notes  # the overall total still includes them, and says so
+    non_active = rows[rows["vendor_status"] != "ACTIVE"]
+    assert len(non_active) == 17
+    assert any(lim.startswith("Includes 17 invoice(s) (EUR 1,084,833.66)") and "ON_HOLD" not in lim for lim in out.limitations)
+    assert f"{int((rows['currency'] != 'EUR').sum())} non-EUR invoice(s) converted" in notes
+    assert "cover all 140 invoices" in notes
+
+
+def test_missing_po_for_one_cost_centre(ctx):
+    """Follow-up regression (T17): the deterministic answer the follow-up should produce."""
+    out = exceptions(ctx, ExceptionsParams(check="missing_po", cost_centers=["CC-FIN-100"]))
+    assert out.result["count"] == 10 and out.result["total_eur"] == 383083.04
+    assert set(out.rows["cost_center"]) == {"CC-FIN-100"} and out.rows["po_number"].isna().all()
