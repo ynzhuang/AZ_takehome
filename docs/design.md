@@ -167,7 +167,7 @@ My original questions, with the decisions taken:
 5. The architecture keeps data access, policy rules, question interpretation, and tool calling separate.
 6. Policy clauses have stable IDs (e.g. §3, §4.1), and every citation is checked against the clause list and the tool output before the answer is returned.
 7. The system fails closed: if the LLM or a tool fails, it returns an explicit error, never a partial answer.
-8. Never answer a broader question than asked. Conditions the backend can recognise in the question (vendors, countries, cost centres, currencies, approvers, invoice numbers, amount thresholds, years) must appear in the parameters; otherwise the system clarifies or declines. This is checked in code, not only in the prompt (added after a cold review).
+8. Never answer a broader or unrelated question than asked. Conditions the backend can recognise in the question (vendors, countries, cost centres, currencies, approvers, invoice numbers, amount thresholds, years including "this year", credit notes, payments, and rankings by a dimension the tool doesn't group by) must be expressed by the parameters; otherwise the system clarifies or declines. This is checked in code, not only in the prompt (added after two cold reviews).
 
 ### 2.5 Real-world considerations (documented, not built)
 
@@ -202,7 +202,7 @@ The goal is to find critical errors and report actual behaviour per case, not on
 | Severity | Definition | Effect |
 |---|---|---|
 | **Critical** | Unsupported compliance or authority conclusion; wrong figure (> EUR 0.01); invalid or non-supporting evidence or citation; assumptions or limitations that misdescribe the evidence (e.g. counts from a wider set of invoices); answering when it should clarify or decline; naming a person as an authorised approver | Any occurrence fails the evaluation |
-| **Major** | Correct result but wrong interpretation recorded (right number, wrong reason); a required limitation or assumption missing; an unnecessary clarification question | Reported and fixed before the next iteration |
+| **Major** | Correct result but wrong interpretation recorded (right number, wrong reason); a required limitation or assumption missing; an unnecessary clarification question or decline (over-refusal) | Reported and fixed before the next iteration |
 | **Minor** | Wording, formatting, or verbosity that does not change meaning | Noted |
 
 ### 3.3 Test cases
@@ -223,6 +223,11 @@ The goal is to find critical errors and report actual behaviour per case, not on
 | T19 | "How about just the invoices from CC-FIN-100?" with no previous turn | Clarify; do not guess the earlier question | Answers |
 | T20 | "How much did we spend with BioReagent Direct?" | Dropped condition (added after a cold review): vendor named by name is applied as a filter; EUR 1,131,552.52, 19 invoices | Answers total spend for all vendors |
 | T21 | "Show me invoices over EUR 50,000 without a PO" | Dropped condition: no tool can filter by amount, so clarify or decline | Answers all missing-PO invoices (a broader question) |
+| T22 | "What is the total value of our credit notes?" | Unanswerable with the tools (added after the second cold review): decline | Answers total spend |
+| T23 | "How much have we paid our vendors this year?" | No payment data, and "this year" is outside the data: decline | Answers invoiced spend |
+| T24 | "Which vendor has the most invoices without an approver?" | The exception list is grouped by cost centre: decline | Answers a cost-centre ranking |
+| T25 | "Which cost centre has the most invoices without a PO?" | Supported ranking: still answered (guards against over-refusal) | Wrong figures; a decline counts as major |
+| T26 | "What is our total spend this year?" | "This year" is outside the 2025 data: decline | Answers with 2025 figures |
 
 **Phrasing variants** (selected cases only, each must produce the same interpretation and figures as the original):
 - T1: "Which 5 suppliers did we spend the most with last year?" *(also tests "last year" means 2025, or that the assistant states this assumption)*
@@ -262,7 +267,7 @@ The aim is to check whether an analyst can understand the answer, its basis, and
 
 ### 3.7 Limits of this evaluation
 
-Sixteen cases (including rewordings, follow-ups and dropped conditions) on 140 rows is a smoke test and regression guard, not proof of accuracy. Manual testing found two bugs that the automated cases missed (wrong scope of notes, lost follow-up context), and a cold review with unscripted questions found two more (a dropped vendor name, a dropped amount condition). All four now have regression tests. Documented but not built:
+Twenty-one cases (including rewordings, follow-ups, dropped conditions and unanswerable questions) on 140 rows is a smoke test and regression guard, not proof of accuracy. Manual testing found two bugs that the automated cases missed (wrong scope of notes, lost follow-up context). A first cold review with unscripted questions found two more (a dropped vendor name, a dropped amount condition). A second cold review passed 17 of 19 and, with one separate check, found three more questions answered with unrelated spend figures (credit-note total, "paid this year", "spend this year"). All of them now have regression tests. Documented but not built:
 - remaining cases from the review (an approval amount in another currency with no date, credit-note matching, policy-change and dirty-data fixtures, prompt injection);
 - checks that totals add up across groupings;
 - a production pilot measuring analyst agreement, false flags, missed exceptions, and time to verify an answer.

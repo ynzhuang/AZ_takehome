@@ -95,6 +95,18 @@ CASES = [
      "params": {"vendor_ids": ["V-1008"]}, "rows": "T20"},
     {"id": "T21", "question": "Show me invoices over EUR 50,000 without a PO", "status": "clarification_needed or declined",
      "tool": "-", "expect_non_answer": True},
+    # Second cold review: questions no tool can answer must be declined, never answered with unrelated figures.
+    # T25 guards against over-refusal: a cost-centre ranking of missing POs is supported and must be answered.
+    {"id": "T22", "question": "What is the total value of our credit notes?", "status": "clarification_needed or declined",
+     "tool": "-", "expect_non_answer": True},
+    {"id": "T23", "question": "How much have we paid our vendors this year?", "status": "clarification_needed or declined",
+     "tool": "-", "expect_non_answer": True},
+    {"id": "T24", "question": "Which vendor has the most invoices without an approver?",
+     "status": "clarification_needed or declined", "tool": "-", "expect_non_answer": True},
+    {"id": "T25", "question": "Which cost centre has the most invoices without a PO?", "status": "answered",
+     "tool": "exceptions", "params": {"check": "missing_po"}, "rows": "T4"},
+    {"id": "T26", "question": "What is our total spend this year?", "status": "clarification_needed or declined",
+     "tool": "-", "expect_non_answer": True},  # "this year" is the current year, outside the 2025 data
 ]
 
 # --------------------------------------------------------------------------- checks
@@ -139,6 +151,8 @@ def check_e2e(case: dict, r: dict, exp: dict) -> list[dict]:
             fail("status", CRITICAL, "interpretation", f"answered instead of {want}")
         elif want == "answered" and r["status"] == "clarification_needed":
             fail("status", MAJOR, "interpretation", "unnecessary clarification")
+        elif want == "answered" and r["status"] == "declined":
+            fail("status", MAJOR, "interpretation", "unnecessary decline (over-refusal; no wrong figure shown)")
         elif r["status"] == "error":
             fail("status", MAJOR, "interpretation" if r["error"]["code"] == "invalid_params" else "llm",
                  f"error {r['error']['code']}: {r['error']['message']}")

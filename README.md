@@ -20,13 +20,13 @@ I focused on the Finance problem rather than building a general chatbot. The LLM
 
 ### 2. How I evaluated it
 
-For evaluation, I focused on three things: whether the LLM understands the question, whether the results and evidence are correct, and whether Finance users can understand the answers and limitations. I used independently calculated expected answers and tested ambiguity, missing information and failures. I ran 16 cases, 3 runs each, with 2 models, and no critical errors were reported. But this is still a small test set and doesn't prove production readiness.
+For evaluation, I focused on three things: whether the LLM understands the question, whether the results and evidence are correct, and whether Finance users can understand the answers and limitations. I used independently calculated expected answers and tested ambiguity, missing information and failures. I ran 21 cases, 3 runs each, with 2 models, and no critical errors were reported. But this is still a small test set and doesn't prove production readiness.
 
 ### 3. What production would need
 
 For production with 200 Finance users, I would consider role-based access control (since different users may have different permissions), real data integration, and audit trails under policy §8.2. I would also collect human-labeled examples to evaluate and improve performance. If policy documents become large and complex, I would consider RAG with a vector database. Production would also need policy versioning, data validation, CI/CD, and monitoring of latency, errors and costs. Before deployment, I would run a pilot with Finance users to check accuracy, missed exceptions and usability.
 
-**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00068 per question with `anthropic/claude-haiku-5.5` and USD 0.00006 with `openai/gpt-6-luna` (run 12, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 57/month with Haiku** or **USD 5/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
+**Model API cost estimate (LLM calls only, not total production cost):** the measured median cost was USD 0.00067 per question with `anthropic/claude-haiku-5.5` and USD 0.00007 with `openai/gpt-6-luna` (run 14, as reported by OpenRouter). *Assuming* 200 users each ask 20 questions per working day over 21 working days a month, that is about 84,000 questions a month: roughly **USD 56/month with Haiku** or **USD 6/month with gpt-6-luna**. This excludes hosting, data integration, monitoring, support, and any increase in prompt size if the policy grows.
 
 ### 4. Optional enhancement: evaluation set and scoring script
 
@@ -73,8 +73,8 @@ answer  ◄── fixed template ◄── deterministic tool (pandas, ECB FX, p
   It never calculates figures, picks invoice rows, or writes answer text. Invoice rows and amounts are never sent to the LLM. It does receive the values it may filter by: vendor IDs and names, countries, categories, cost centres, currencies, and the 13 distinct invoice descriptions. In production, descriptions are supplier-written text, so they would have to be treated as untrusted input (and there would be far too many to list).
 - **Every parameter is validated** against a JSON schema and against the values that actually exist in the data (countries, categories, vendor IDs, policy clause IDs). An invented value becomes an error, never a guess.
 - **Dropped conditions are refused in code, not just by the prompt.**
-  - Before a spend or exception answer is returned, the backend looks for conditions it can recognise in the question: vendor names or IDs, countries, cost centres, non-EUR currencies, approvers, invoice numbers, amount or count thresholds, and years.
-  - It checks that the parameters express each one. If the tool has a filter for it but it wasn't applied, the answer is a clarification. If the condition can't be applied at all (e.g. "over EUR 50,000", or a year outside the data), the answer is a decline. A broader answer is never returned.
+  - Before a spend or exception answer is returned, the backend looks for conditions it can recognise in the question: vendor names or IDs, countries, cost centres, non-EUR currencies, approvers, invoice numbers, amount or count thresholds, years (including "this year"), credit notes, payments, and rankings such as "which vendor".
+  - It checks that the parameters express each one. If the tool has a filter for it but it wasn't applied, the answer is a clarification. If the condition can't be applied at all (e.g. "over EUR 50,000", a credit-note total, a payment question, a vendor ranking of an exception list, or a year outside the data), the answer is a decline. A broader or unrelated answer is never returned.
   - Conditions it can't recognise (e.g. "late invoices") still depend on the prompt rules.
 - **All calculations are deterministic code:**
   - Spend is the net invoiced amount in EUR, with credit notes and all statuses included.
@@ -141,8 +141,8 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
 
 | Provider | Model | Status |
 |---|---|---|
-| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 12 separate evaluation runs |
-| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 10 separate evaluation runs |
+| OpenRouter | `anthropic/claude-haiku-5.5` (default) | **Tested:** full evaluation, 3 runs per case, 14 separate evaluation runs |
+| OpenRouter | `openai/gpt-6-luna` | **Tested:** full evaluation, 3 runs per case, 12 separate evaluation runs |
 | Stub (`LLM_PROVIDER=stub`) | keyword rules | Runs offline. Not an LLM; it fails some reworded questions. The UI header labels it "(not an LLM)" |
 | OpenAI direct, Ollama, other OpenAI-compatible APIs | — | **Untested.** They should work if they support tools and `tool_choice: "required"` |
 
@@ -158,7 +158,7 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
   "question": "…", "answer": "text from a fixed template", "result": { "…structured figures…" },
   "interpretation": { "tool": "spend", "route": "data", "params": { "countries": ["Spain"] },
                       "interpreter": "anthropic/claude-haiku-5.5 via https://openrouter.ai/api/v1",
-                      "latency_ms": 900, "usage": { "prompt_tokens": 6459, "completion_tokens": 63, "cost": 0.0007 },
+                      "latency_ms": 900, "usage": { "prompt_tokens": 6456, "completion_tokens": 45, "cost": 0.0007 },
                       "follow_up_to": null },
   "evidence": { "rows": ["…invoice rows with EUR amount and FX rate used…"], "row_count": 49,
                 "clauses": [{ "id": "5.1", "section": "…", "text": "…" }], "fx_rates": ["…"] },
@@ -202,7 +202,7 @@ HTTP status codes:
 
 | What | Command | Result (2026-11-05) |
 |---|---|---|
-| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **106 passed** |
+| Backend unit and API tests (no network) | `cd backend && .venv/bin/python -m pytest -q` | **123 passed** |
 | Evaluation (uses the LLM in `.env`) | `backend/.venv/bin/python eval/run_eval.py --runs 3` | See below |
 | UI smoke test against the running app (optional; needs Playwright) | `cd frontend && node e2e/ui_smoke.mjs` | **28/28 checks passed**, including a follow-up (real backend; LLM-down case used a backend pointed at an unreachable LLM endpoint) |
 | Frontend type check and build | `cd frontend && npm run build` | Passes |
@@ -215,13 +215,14 @@ HTTP status codes:
 - Failures are injected: timeout, malformed tool call, invalid parameters.
 - Follow-up cases send the earlier question first and pass the last answered turn as context, as the frontend does. T18 checks that a self-contained question does not inherit filters; T19 checks that a follow-up sent without context is clarified.
 - Dropped-condition cases: T20 checks that a vendor named by name is applied as a filter; T21 checks that a condition no tool can apply ("over EUR 50,000") is clarified or declined. Answering T21 counts as critical.
+- Unanswerable-question cases: T22 (credit-note total), T23 ("paid this year"), T24 (vendor ranking of missing approvers) and T26 ("spend this year") must be declined or clarified; answering counts as critical. T25 checks that a supported cost-centre ranking is still answered; declining a supported question counts as major (over-refusal).
 
-**Results, last run after a code change (run 12):** 16 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, follow-ups T17–T19, and dropped conditions T20–T21) and 3 injected failures.
+**Results, last run after a code change (run 14):** 21 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, follow-ups T17–T19, dropped conditions T20–T21, and unanswerable questions T22–T26) and 3 injected failures.
 
 | Model (OpenRouter) | Critical errors | Cases with no findings | Tools level | Failure injection | Median latency | Median tokens per question | Median cost per question |
 |---|---|---|---|---|---|---|---|
-| `anthropic/claude-haiku-5.5` | 0 | 16/16 | 9/9 | 3/3 | 916 ms | 6,459 + 63 | USD 0.00068 |
-| `openai/gpt-6-luna` | 0 | 15/16 (1 major: T5, below) | 9/9 | 3/3 | 1,560 ms | 3,528 + 31 | USD 0.00006 |
+| `anthropic/claude-haiku-5.5` | 0 | 21/21 | 10/10 | 3/3 | 882 ms | 6,456 + 45 | USD 0.00067 |
+| `openai/gpt-6-luna` | 0 | 19/21 (2 major: T5 and T25, below) | 10/10 | 3/3 | 1,819 ms | 3,527 + 45 | USD 0.00007 |
 
 **History, kept in full in [`eval/results/README.md`](eval/results/README.md):**
 - **Run 1** flagged 4 "major" consistency findings. These were a **checker issue**: the check compared LLM-written wording rather than meaning. After the fix, run 2 and run 3 are clean.
@@ -233,8 +234,12 @@ HTTP status codes:
   - On the unfixed code, the new cases T20 and T21 were critical for both models (run 10).
   - The fix (vendor names, plus the code check described in "How it works") at first turned an invented-value error into a clarification (run 11, failure injection). Running the check after the tool's own validation fixed that.
   - Run 12 is clean apart from gpt-6-luna's T5 loop. "Which vendor has the most invoices without an approver?" is still answered by cost centre: a missing grouping, not a dropped filter, so it's a known limitation.
+- **A second cold review** ([questions and results](eval/results/2026-11-05_cold-review-probes.md)) passed **17 of 19** unscripted questions. "What is the total value of our credit notes?" and "How much have we paid our vendors this year?" were answered with total spend. A separate check, not one of the 19, found "What is our total spend this year?" answered with 2025 figures, although "this year" is 2026. The vendor-ranking question above was also still answered by cost centre.
+  - The new cases T22–T24 and T26 were critical for Haiku on the unfixed code (run 13).
+  - The fix extends the same code check: credit notes, payment terms, relative years and rankings by a dimension the tool doesn't group by are now declined. No new analytics were added. After it, the second cold review passes 19 of 19, the separate "this year" check is declined, and "last year" and "in 2025" are still answered.
+  - Run 14: Haiku 0 critical, 21/21. gpt-6-luna 0 critical, with two major findings: its T5 loop, and declining the supported cost-centre ranking (T25), which it also did before the fix. The scorer now counts an unnecessary decline as major (over-refusal), like an unnecessary clarification.
 - A stub dry run showed the scorer does catch failures. It also found a real defect: a figure appeared in the answer text but not in the result. That defect was fixed.
-- **Caveat:** 16 cases over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
+- **Caveat:** 21 cases over 140 invoices is a smoke test and a regression guard. It does not prove accuracy.
 
 ## Data
 
