@@ -1,0 +1,870 @@
+{
+  "interpreter": "anthropic/claude-haiku-5.5 via https://openrouter.ai/api/v1",
+  "runs": 3,
+  "started": "2026-11-05T03:31:43.025349+00:00",
+  "finished": "2026-11-05T03:32:21.988971+00:00",
+  "tools_level": [
+    {
+      "id": "T1",
+      "findings": []
+    },
+    {
+      "id": "T2",
+      "findings": []
+    },
+    {
+      "id": "T3",
+      "findings": []
+    },
+    {
+      "id": "T4",
+      "findings": []
+    },
+    {
+      "id": "T6",
+      "findings": []
+    },
+    {
+      "id": "T11",
+      "findings": []
+    }
+  ],
+  "e2e": [
+    {
+      "case": {
+        "id": "T1",
+        "question": "What are our top 5 vendors by total spend in 2025?",
+        "status": "answered",
+        "tool": "spend",
+        "params": {
+          "group_by": "vendor",
+          "top_n": 5
+        },
+        "rows": "T1"
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "group_by": "vendor",
+            "top_n": 5
+          },
+          "answer": "Top 5 vendors by net spend:\n1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)\n2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)\n3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)\n4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)\n5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)\nThese 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).",
+          "latency_ms": 1084,
+          "usage": {
+            "prompt_tokens": 5564,
+            "completion_tokens": 63,
+            "cost": 0.0005879
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "group_by": "vendor",
+            "top_n": 5
+          },
+          "answer": "Top 5 vendors by net spend:\n1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)\n2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)\n3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)\n4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)\n5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)\nThese 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).",
+          "latency_ms": 815,
+          "usage": {
+            "prompt_tokens": 5564,
+            "completion_tokens": 63,
+            "cost": 0.0005879
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "group_by": "vendor",
+            "top_n": 5
+          },
+          "answer": "Top 5 vendors by net spend:\n1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)\n2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)\n3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)\n4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)\n5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)\nThese 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).",
+          "latency_ms": 1157,
+          "usage": {
+            "prompt_tokens": 5564,
+            "completion_tokens": 63,
+            "cost": 0.0005879
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T1-v",
+        "variant_of": "T1",
+        "question": "Which 5 suppliers did we spend the most with last year?",
+        "status": "answered",
+        "tool": "spend",
+        "params": {
+          "group_by": "vendor",
+          "top_n": 5
+        },
+        "rows": "T1"
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "group_by": "vendor",
+            "top_n": 5,
+            "date_from": "2025-01-01",
+            "date_to": "2025-12-31"
+          },
+          "answer": "Top 5 vendors by net spend:\n1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)\n2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)\n3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)\n4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)\n5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)\nThese 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).",
+          "latency_ms": 935,
+          "usage": {
+            "prompt_tokens": 5564,
+            "completion_tokens": 119,
+            "cost": 0.0006159
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "group_by": "vendor",
+            "top_n": 5,
+            "date_from": "2025-01-01",
+            "date_to": "2025-12-31"
+          },
+          "answer": "Top 5 vendors by net spend:\n1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)\n2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)\n3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)\n4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)\n5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)\nThese 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).",
+          "latency_ms": 918,
+          "usage": {
+            "prompt_tokens": 5564,
+            "completion_tokens": 119,
+            "cost": 0.0006159
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "group_by": "vendor",
+            "top_n": 5,
+            "date_from": "2025-01-01",
+            "date_to": "2025-12-31"
+          },
+          "answer": "Top 5 vendors by net spend:\n1. BioReagent Direct (V-1008): EUR 1,131,552.52 (19 invoices)\n2. PharmaPrint Studios (V-1006): EUR 1,084,833.66 (17 invoices)\n3. ClinSupply Iberia S.L. (V-1002): EUR 977,202.81 (21 invoices)\n4. Labtech Solutions GmbH (V-1001): EUR 753,471.70 (15 invoices)\n5. Quanta Cloud Services (V-1007): EUR 675,042.79 (13 invoices)\nThese 5 of 10 vendors account for EUR 4,622,103.48 of EUR 6,886,631.10 total net spend (67.1%).",
+          "latency_ms": 982,
+          "usage": {
+            "prompt_tokens": 5564,
+            "completion_tokens": 119,
+            "cost": 0.0006159
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T2",
+        "question": "What is our total spend with vendors based in Spain?",
+        "status": "answered",
+        "tool": "spend",
+        "params": {
+          "countries": [
+            "Spain"
+          ]
+        },
+        "rows": "T2",
+        "required_limitations": [
+          "INACTIVE"
+        ]
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "countries": [
+              "Spain"
+            ]
+          },
+          "answer": "Net spend (countries = Spain): EUR 2,631,938.81 across 49 invoices.",
+          "latency_ms": 786,
+          "usage": {
+            "prompt_tokens": 5561,
+            "completion_tokens": 65,
+            "cost": 0.0005886
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "countries": [
+              "Spain"
+            ]
+          },
+          "answer": "Net spend (countries = Spain): EUR 2,631,938.81 across 49 invoices.",
+          "latency_ms": 839,
+          "usage": {
+            "prompt_tokens": 5561,
+            "completion_tokens": 65,
+            "cost": 0.0005886
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "spend",
+          "params": {
+            "countries": [
+              "Spain"
+            ]
+          },
+          "answer": "Net spend (countries = Spain): EUR 2,631,938.81 across 49 invoices.",
+          "latency_ms": 824,
+          "usage": {
+            "prompt_tokens": 5561,
+            "completion_tokens": 65,
+            "cost": 0.0005886
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T3",
+        "question": "Who is allowed to approve an invoice of EUR 60,000?",
+        "status": "answered",
+        "tool": "approval_tier",
+        "params": {
+          "amount": 60000
+        },
+        "required_limitations": [
+          "no individual can be named"
+        ],
+        "forbid_approver_names": true
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "approval_tier",
+          "params": {
+            "amount": 60000.0,
+            "currency": "EUR"
+          },
+          "answer": "An invoice of EUR 60,000.00 requires approval by: Finance Director (policy \u00a73, tier \"50,000.01 \u2013 250,000\").",
+          "latency_ms": 883,
+          "usage": {
+            "prompt_tokens": 5567,
+            "completion_tokens": 65,
+            "cost": 0.0005892
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "approval_tier",
+          "params": {
+            "amount": 60000.0,
+            "currency": "EUR"
+          },
+          "answer": "An invoice of EUR 60,000.00 requires approval by: Finance Director (policy \u00a73, tier \"50,000.01 \u2013 250,000\").",
+          "latency_ms": 837,
+          "usage": {
+            "prompt_tokens": 5567,
+            "completion_tokens": 65,
+            "cost": 0.0005892
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "approval_tier",
+          "params": {
+            "amount": 60000.0,
+            "currency": "EUR"
+          },
+          "answer": "An invoice of EUR 60,000.00 requires approval by: Finance Director (policy \u00a73, tier \"50,000.01 \u2013 250,000\").",
+          "latency_ms": 832,
+          "usage": {
+            "prompt_tokens": 5567,
+            "completion_tokens": 65,
+            "cost": 0.0005892
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T3-v",
+        "variant_of": "T3",
+        "question": "Who signs off on a 60k invoice?",
+        "status": "answered",
+        "tool": "approval_tier",
+        "params": {
+          "amount": 60000
+        },
+        "required_limitations": [
+          "no individual can be named"
+        ],
+        "required_assumptions_if_no_currency": [
+          "EUR assumed"
+        ],
+        "forbid_approver_names": true
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "approval_tier",
+          "params": {
+            "amount": 60000.0
+          },
+          "answer": "An invoice of EUR 60,000.00 requires approval by: Finance Director (policy \u00a73, tier \"50,000.01 \u2013 250,000\").",
+          "latency_ms": 812,
+          "usage": {
+            "prompt_tokens": 5559,
+            "completion_tokens": 41,
+            "cost": 0.0005764
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "approval_tier",
+          "params": {
+            "amount": 60000.0
+          },
+          "answer": "An invoice of EUR 60,000.00 requires approval by: Finance Director (policy \u00a73, tier \"50,000.01 \u2013 250,000\").",
+          "latency_ms": 917,
+          "usage": {
+            "prompt_tokens": 5559,
+            "completion_tokens": 41,
+            "cost": 0.0005764
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "approval_tier",
+          "params": {
+            "amount": 60000.0
+          },
+          "answer": "An invoice of EUR 60,000.00 requires approval by: Finance Director (policy \u00a73, tier \"50,000.01 \u2013 250,000\").",
+          "latency_ms": 796,
+          "usage": {
+            "prompt_tokens": 5559,
+            "completion_tokens": 41,
+            "cost": 0.0005764
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T4",
+        "question": "Which invoices of EUR 1,000 or more have no PO, and who should they be flagged to?",
+        "status": "answered",
+        "tool": "exceptions",
+        "params": {
+          "check": "missing_po"
+        },
+        "rows": "T4",
+        "required_clauses": [
+          "2.1",
+          "2.2"
+        ],
+        "required_limitations": [
+          "potential exceptions, not confirmed violations",
+          "blanket",
+          "[Cc]ost-centre owners are not in the data"
+        ]
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "exceptions",
+          "params": {
+            "check": "missing_po"
+          },
+          "answer": "21 invoices at or above the PO threshold with no PO number (potential maverick spend), totalling EUR 1,131,481.11.\nBy cost centre:\n- CC-FIN-100: 10 invoices, EUR 383,083.04\n- CC-COM-440: 5 invoices, EUR 277,102.48\n- CC-IT-550: 2 invoices, EUR 203,183.42\n- CC-OPS-330: 3 invoices, EUR 191,864.23\n- CC-RND-210: 1 invoice, EUR 76,247.94\nRequired action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (\u00a72.2).",
+          "latency_ms": 3732,
+          "usage": {
+            "prompt_tokens": 5576,
+            "completion_tokens": 41,
+            "cost": 0.0005781
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "exceptions",
+          "params": {
+            "check": "missing_po"
+          },
+          "answer": "21 invoices at or above the PO threshold with no PO number (potential maverick spend), totalling EUR 1,131,481.11.\nBy cost centre:\n- CC-FIN-100: 10 invoices, EUR 383,083.04\n- CC-COM-440: 5 invoices, EUR 277,102.48\n- CC-IT-550: 2 invoices, EUR 203,183.42\n- CC-OPS-330: 3 invoices, EUR 191,864.23\n- CC-RND-210: 1 invoice, EUR 76,247.94\nRequired action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (\u00a72.2).",
+          "latency_ms": 810,
+          "usage": {
+            "prompt_tokens": 5576,
+            "completion_tokens": 41,
+            "cost": 0.0005781
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "exceptions",
+          "params": {
+            "check": "missing_po"
+          },
+          "answer": "21 invoices at or above the PO threshold with no PO number (potential maverick spend), totalling EUR 1,131,481.11.\nBy cost centre:\n- CC-FIN-100: 10 invoices, EUR 383,083.04\n- CC-COM-440: 5 invoices, EUR 277,102.48\n- CC-IT-550: 2 invoices, EUR 203,183.42\n- CC-OPS-330: 3 invoices, EUR 191,864.23\n- CC-RND-210: 1 invoice, EUR 76,247.94\nRequired action: Flag each invoice to its cost-centre owner and include it in the quarterly maverick-spend report (\u00a72.2).",
+          "latency_ms": 805,
+          "usage": {
+            "prompt_tokens": 5576,
+            "completion_tokens": 41,
+            "cost": 0.0005781
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T5",
+        "question": "What is our consulting spend?",
+        "status": "clarification_needed",
+        "tool": "clarify"
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "clarification_needed",
+          "tool": "clarify",
+          "params": {
+            "question": "\"Consulting\" can mean the vendor category or the invoice descriptions for consulting services. Which do you mean?",
+            "options": [
+              "What is our total net invoiced spend in EUR for vendors in the Consulting vendor category, for the whole 2025 data period?",
+              "What is our total net invoiced spend in EUR for invoices with descriptions Q1, Q2, Q3 or Q4 consulting services, for the whole 2025 data period?"
+            ]
+          },
+          "answer": "\"Consulting\" can mean the vendor category or the invoice descriptions for consulting services. Which do you mean?",
+          "latency_ms": 3749,
+          "usage": {
+            "prompt_tokens": 5554,
+            "completion_tokens": 195,
+            "cost": 0.0006529
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "clarification_needed",
+          "tool": "clarify",
+          "params": {
+            "question": "\"Consulting\" can mean the vendor category or the invoice descriptions for consulting services. Which do you mean?",
+            "options": [
+              "What is our total net spend in EUR for vendors in the Consulting vendor category across the whole 2025 data period?",
+              "What is our total net spend in EUR for invoices with descriptions 'Q1 consulting services', 'Q2 consulting services', 'Q3 consulting services' or 'Q4 consulting services' across the whole 2025 data period?"
+            ]
+          },
+          "answer": "\"Consulting\" can mean the vendor category or the invoice descriptions for consulting services. Which do you mean?",
+          "latency_ms": 1392,
+          "usage": {
+            "prompt_tokens": 5554,
+            "completion_tokens": 209,
+            "cost": 0.0006599
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "clarification_needed",
+          "tool": "clarify",
+          "params": {
+            "question": "\"Consulting\" could refer to the vendor category or to invoice descriptions for consulting services. Which do you mean?",
+            "options": [
+              "What is our total spend with vendors in the Consulting vendor category for 2025?",
+              "What is our total spend on invoices with descriptions Q1, Q2, Q3 or Q4 consulting services for 2025?"
+            ]
+          },
+          "answer": "\"Consulting\" could refer to the vendor category or to invoice descriptions for consulting services. Which do you mean?",
+          "latency_ms": 1230,
+          "usage": {
+            "prompt_tokens": 5554,
+            "completion_tokens": 164,
+            "cost": 0.0006374
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T5-v",
+        "variant_of": "T5",
+        "question": "How much went on consulting?",
+        "status": "clarification_needed",
+        "tool": "clarify"
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "clarification_needed",
+          "tool": "clarify",
+          "params": {
+            "question": "\"Consulting\" could mean the vendor category or invoices with consulting descriptions. Which do you mean?",
+            "options": [
+              "What is the total net spend in EUR with vendors in the Consulting vendor category in 2025?",
+              "What is the total net spend in EUR on invoices with descriptions Q1, Q2, Q3 or Q4 consulting services in 2025?"
+            ]
+          },
+          "answer": "\"Consulting\" could mean the vendor category or invoices with consulting descriptions. Which do you mean?",
+          "latency_ms": 1220,
+          "usage": {
+            "prompt_tokens": 5553,
+            "completion_tokens": 171,
+            "cost": 0.0006408
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "clarification_needed",
+          "tool": "clarify",
+          "params": {
+            "question": "\"Consulting\" could mean the vendor category or invoices with consulting descriptions. Which do you mean?",
+            "options": [
+              "What is the total net invoiced spend in EUR for vendors in the Consulting vendor category in 2025?",
+              "What is the total net invoiced spend in EUR for invoices with descriptions Q1, Q2, Q3 or Q4 consulting services in 2025?"
+            ]
+          },
+          "answer": "\"Consulting\" could mean the vendor category or invoices with consulting descriptions. Which do you mean?",
+          "latency_ms": 1337,
+          "usage": {
+            "prompt_tokens": 5553,
+            "completion_tokens": 179,
+            "cost": 0.0006448
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "clarification_needed",
+          "tool": "clarify",
+          "params": {
+            "question": "\"Consulting\" could mean the vendor category or the invoice descriptions (Q1\u2013Q4 consulting services). Which do you mean?",
+            "options": [
+              "How much did we spend in 2025 with vendors in the Consulting vendor category?",
+              "How much did we spend in 2025 on invoices with descriptions 'Q1 consulting services', 'Q2 consulting services', 'Q3 consulting services' or 'Q4 consulting services'?"
+            ]
+          },
+          "answer": "\"Consulting\" could mean the vendor category or the invoice descriptions (Q1\u2013Q4 consulting services). Which do you mean?",
+          "latency_ms": 1381,
+          "usage": {
+            "prompt_tokens": 5553,
+            "completion_tokens": 197,
+            "cost": 0.0006538
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T6",
+        "question": "Was INV-20008 approved by someone with sufficient authority?",
+        "status": "answered",
+        "tool": "invoice_check",
+        "params": {
+          "invoice_number": "INV-20008"
+        },
+        "rows": "T6",
+        "required_limitations": [
+          "authority cannot be verified"
+        ]
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "invoice_check",
+          "params": {
+            "invoice_number": "INV-20008"
+          },
+          "answer": "INV-20008, GBP 50,350.62 (EUR 60,435.49). Required approver under \u00a73: Finance Director.\n- \u00a72.1 PO required at EUR 1,000.00 or above: No issue detected in checked fields. PO number recorded: PO-78797 (validity and issue date cannot be checked).\n- \u00a73.1 Approver recorded: No issue detected in checked fields. Recorded approver: r.okafor.\n- \u00a73 Approver has authority (required role: Finance Director): Cannot determine from available data. The data does not map approvers to roles, so the approver's authority cannot be verified.\n- \u00a74.1 Vendor is ACTIVE: No issue detected in checked fields. Vendor status ACTIVE in the vendor master (undated snapshot).\n- \u00a77.2 No self-approval / segregation of duties: Cannot determine from available data. The data has no requester, so segregation of duties cannot be checked.\nItems that cannot be determined need information that is not in the data.",
+          "latency_ms": 843,
+          "usage": {
+            "prompt_tokens": 5566,
+            "completion_tokens": 47,
+            "cost": 0.0005801
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "invoice_check",
+          "params": {
+            "invoice_number": "INV-20008"
+          },
+          "answer": "INV-20008, GBP 50,350.62 (EUR 60,435.49). Required approver under \u00a73: Finance Director.\n- \u00a72.1 PO required at EUR 1,000.00 or above: No issue detected in checked fields. PO number recorded: PO-78797 (validity and issue date cannot be checked).\n- \u00a73.1 Approver recorded: No issue detected in checked fields. Recorded approver: r.okafor.\n- \u00a73 Approver has authority (required role: Finance Director): Cannot determine from available data. The data does not map approvers to roles, so the approver's authority cannot be verified.\n- \u00a74.1 Vendor is ACTIVE: No issue detected in checked fields. Vendor status ACTIVE in the vendor master (undated snapshot).\n- \u00a77.2 No self-approval / segregation of duties: Cannot determine from available data. The data has no requester, so segregation of duties cannot be checked.\nItems that cannot be determined need information that is not in the data.",
+          "latency_ms": 856,
+          "usage": {
+            "prompt_tokens": 5566,
+            "completion_tokens": 47,
+            "cost": 0.0005801
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "invoice_check",
+          "params": {
+            "invoice_number": "INV-20008"
+          },
+          "answer": "INV-20008, GBP 50,350.62 (EUR 60,435.49). Required approver under \u00a73: Finance Director.\n- \u00a72.1 PO required at EUR 1,000.00 or above: No issue detected in checked fields. PO number recorded: PO-78797 (validity and issue date cannot be checked).\n- \u00a73.1 Approver recorded: No issue detected in checked fields. Recorded approver: r.okafor.\n- \u00a73 Approver has authority (required role: Finance Director): Cannot determine from available data. The data does not map approvers to roles, so the approver's authority cannot be verified.\n- \u00a74.1 Vendor is ACTIVE: No issue detected in checked fields. Vendor status ACTIVE in the vendor master (undated snapshot).\n- \u00a77.2 No self-approval / segregation of duties: Cannot determine from available data. The data has no requester, so segregation of duties cannot be checked.\nItems that cannot be determined need information that is not in the data.",
+          "latency_ms": 761,
+          "usage": {
+            "prompt_tokens": 5566,
+            "completion_tokens": 47,
+            "cost": 0.0005801
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T8",
+        "question": "What was our total spend in 2024?",
+        "status": "declined",
+        "tool": "decline",
+        "alt_tools": [
+          "spend"
+        ]
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "declined",
+          "tool": "decline",
+          "params": {
+            "reason": "outside_data_period",
+            "explanation": "The invoice data only covers 2025-01-01 to 2025-12-31, so 2024 spend cannot be calculated."
+          },
+          "answer": "I can't answer this: the question is about a period the invoice data does not cover.",
+          "latency_ms": 880,
+          "usage": {
+            "prompt_tokens": 5556,
+            "completion_tokens": 104,
+            "cost": 0.0006076
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "declined",
+          "tool": "decline",
+          "params": {
+            "reason": "outside_data_period",
+            "explanation": "The invoice data only covers 2025-01-01 to 2025-12-31, so 2024 spend is not available."
+          },
+          "answer": "I can't answer this: the question is about a period the invoice data does not cover.",
+          "latency_ms": 931,
+          "usage": {
+            "prompt_tokens": 5556,
+            "completion_tokens": 100,
+            "cost": 0.0006056
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "declined",
+          "tool": "decline",
+          "params": {
+            "reason": "outside_data_period",
+            "explanation": "The invoice data only covers 2025-01-01 to 2025-12-31, so 2024 spend cannot be calculated."
+          },
+          "answer": "I can't answer this: the question is about a period the invoice data does not cover.",
+          "latency_ms": 954,
+          "usage": {
+            "prompt_tokens": 5556,
+            "completion_tokens": 104,
+            "cost": 0.0006076
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    },
+    {
+      "case": {
+        "id": "T11",
+        "question": "Which invoices are missing an approver?",
+        "status": "answered",
+        "tool": "exceptions",
+        "params": {
+          "check": "missing_approver"
+        },
+        "rows": "T11",
+        "required_clauses": [
+          "3.1"
+        ]
+      },
+      "runs": [
+        {
+          "run": 1,
+          "http": 200,
+          "status": "answered",
+          "tool": "exceptions",
+          "params": {
+            "check": "missing_approver"
+          },
+          "answer": "25 invoices with no approver recorded, totalling EUR 1,057,076.74.\nBy cost centre:\n- CC-FIN-100: 10 invoices, EUR 577,178.35\n- CC-OPS-330: 4 invoices, EUR 196,021.31\n- CC-COM-440: 5 invoices, EUR 177,549.22\n- CC-RND-210: 3 invoices, EUR 61,135.84\n- CC-IT-550: 3 invoices, EUR 45,192.02\n3 of these also have no PO number: INV-20042, INV-20123, INV-20128.\nRequired action: Hold these invoices; they may not be paid until an approval is recorded (\u00a73.1).",
+          "latency_ms": 867,
+          "usage": {
+            "prompt_tokens": 5557,
+            "completion_tokens": 42,
+            "cost": 0.0005767
+          },
+          "findings": []
+        },
+        {
+          "run": 2,
+          "http": 200,
+          "status": "answered",
+          "tool": "exceptions",
+          "params": {
+            "check": "missing_approver"
+          },
+          "answer": "25 invoices with no approver recorded, totalling EUR 1,057,076.74.\nBy cost centre:\n- CC-FIN-100: 10 invoices, EUR 577,178.35\n- CC-OPS-330: 4 invoices, EUR 196,021.31\n- CC-COM-440: 5 invoices, EUR 177,549.22\n- CC-RND-210: 3 invoices, EUR 61,135.84\n- CC-IT-550: 3 invoices, EUR 45,192.02\n3 of these also have no PO number: INV-20042, INV-20123, INV-20128.\nRequired action: Hold these invoices; they may not be paid until an approval is recorded (\u00a73.1).",
+          "latency_ms": 807,
+          "usage": {
+            "prompt_tokens": 5557,
+            "completion_tokens": 42,
+            "cost": 0.0005767
+          },
+          "findings": []
+        },
+        {
+          "run": 3,
+          "http": 200,
+          "status": "answered",
+          "tool": "exceptions",
+          "params": {
+            "check": "missing_approver"
+          },
+          "answer": "25 invoices with no approver recorded, totalling EUR 1,057,076.74.\nBy cost centre:\n- CC-FIN-100: 10 invoices, EUR 577,178.35\n- CC-OPS-330: 4 invoices, EUR 196,021.31\n- CC-COM-440: 5 invoices, EUR 177,549.22\n- CC-RND-210: 3 invoices, EUR 61,135.84\n- CC-IT-550: 3 invoices, EUR 45,192.02\n3 of these also have no PO number: INV-20042, INV-20123, INV-20128.\nRequired action: Hold these invoices; they may not be paid until an approval is recorded (\u00a73.1).",
+          "latency_ms": 803,
+          "usage": {
+            "prompt_tokens": 5557,
+            "completion_tokens": 42,
+            "cost": 0.0005767
+          },
+          "findings": []
+        }
+      ],
+      "consistency": [],
+      "worst": null
+    }
+  ],
+  "failure_injection": [
+    {
+      "id": "T16 timeout",
+      "http": 502,
+      "status": "error",
+      "error": "llm_timeout",
+      "summary_http": 200,
+      "findings": []
+    },
+    {
+      "id": "T16 malformed_tool_call",
+      "http": 502,
+      "status": "error",
+      "error": "llm_invalid_arguments",
+      "summary_http": 200,
+      "findings": []
+    },
+    {
+      "id": "T16 invalid_parameters",
+      "http": 502,
+      "status": "error",
+      "error": "invalid_params",
+      "summary_http": 200,
+      "findings": []
+    }
+  ]
+}

@@ -81,7 +81,6 @@ def render_approval_tier(r: dict[str, Any]) -> str:
     )
 
 
-_RESULT_WORD = {"ok": "NO ISSUE FOUND", "flag": "FLAG", "cannot_determine": "CANNOT DETERMINE", "not_applicable": "N/A"}
 
 
 def render_invoice_check(r: dict[str, Any]) -> str:
@@ -92,9 +91,9 @@ def render_invoice_check(r: dict[str, Any]) -> str:
     if r["required_role"]:
         head += f" Required approver under §3: {r['required_role']}."
     lines = [head]
-    lines += [f"- [{_RESULT_WORD[c['result']]}] §{c['clause']} {c['rule']}: {c['detail']}" for c in r["checks"]]
+    lines += [f"- §{c['clause']} {c['rule']}: {c['label']}. {c['detail']}" for c in r["checks"]]
     if any(c["result"] == "cannot_determine" for c in r["checks"]):
-        lines.append("Items marked CANNOT DETERMINE need information that is not in the data.")
+        lines.append("Items that cannot be determined need information that is not in the data.")
     return "\n".join(lines)
 
 

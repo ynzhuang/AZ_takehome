@@ -44,6 +44,7 @@ class ToolCall:
     name: str
     arguments: dict[str, Any]
     latency_ms: int
+    usage: dict[str, Any] | None = None  # tokens (and cost, if the provider reports it)
 
 
 class Interpreter(Protocol):
@@ -137,7 +138,8 @@ class OpenAICompatibleInterpreter:
         if resp.status_code != 200:
             raise InterpreterError("llm_http_error", f"The LLM endpoint returned HTTP {resp.status_code}.")
         try:
-            message = resp.json()["choices"][0]["message"]
+            payload = resp.json()
+            message = payload["choices"][0]["message"]
         except (ValueError, KeyError, IndexError, TypeError):
             raise InterpreterError("llm_invalid_response", "The LLM response was not in the expected format.")
         calls = message.get("tool_calls") or []
@@ -153,7 +155,9 @@ class OpenAICompatibleInterpreter:
                 raise ValueError
         except ValueError:
             raise InterpreterError("llm_invalid_arguments", "The LLM returned tool arguments that are not a JSON object.")
-        return ToolCall(name=name, arguments=args, latency_ms=latency_ms)
+        u = payload.get("usage") or {}
+        usage = {k: u[k] for k in ("prompt_tokens", "completion_tokens", "cost") if isinstance(u.get(k), (int, float))}
+        return ToolCall(name=name, arguments=args, latency_ms=latency_ms, usage=usage or None)
 
 
 # --------------------------------------------------------------------------- stub (no LLM)

@@ -58,8 +58,8 @@ class AssistantService:
             call = self.interpreter.interpret(question)
         except InterpreterError as e:
             return self._error(base, interp, e.code, e.message)
-        interp.tool, interp.route, interp.params, interp.latency_ms = (
-            call.name, TOOL_ROUTE[call.name], call.arguments, call.latency_ms)
+        interp.tool, interp.route, interp.params, interp.latency_ms, interp.usage = (
+            call.name, TOOL_ROUTE[call.name], call.arguments, call.latency_ms, call.usage)
 
         try:
             params = TOOL_PARAMS[call.name].model_validate(call.arguments)
@@ -156,6 +156,7 @@ class AssistantService:
             "by_currency": sorted(by_currency, key=lambda x: -x["total_eur"]),
             "by_vendor_status": sorted(by_status, key=lambda x: -x["total_eur"]),
             "control_flags": {
+                "po_threshold_eur": pol.po_threshold_eur,
                 "missing_po_at_or_above_threshold": int(((inv["po_number"].isna()) & (inv["amount_eur"] >= pol.po_threshold_eur)).sum()),
                 "missing_approver": int(inv["approved_by"].isna().sum()),
                 "non_active_vendor": int((inv["vendor_status"] != "ACTIVE").sum()),

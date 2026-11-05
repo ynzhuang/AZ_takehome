@@ -137,3 +137,10 @@ def test_policy_clauses_reject_invented_ids(ctx):
     assert policy_clauses(ctx, PolicyClausesParams(clause_ids=["6.1"])).clause_ids == ["6.1"]
     with pytest.raises(InvalidParams):
         policy_clauses(ctx, PolicyClausesParams(clause_ids=["6.4"]))
+
+
+def test_invoice_check_labels_do_not_overclaim(ctx):
+    out = invoice_check(ctx, InvoiceCheckParams(invoice_number="INV-20008"))
+    labels = {c["result"]: c["label"] for c in out.result["checks"]}
+    assert labels["ok"] == "No issue detected in checked fields"
+    assert labels["cannot_determine"] == "Cannot determine from available data"

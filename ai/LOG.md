@@ -14,7 +14,8 @@ No secrets and no raw chat history.
 | 2. Data and policy | "Review against the original files, identify gaps or mistakes, verify important findings." | Classify each rule as checkable, partially checkable, or cannot be determined; document FX and threshold assumptions; note real-world issues (dirty data, policy changes) without building them |
 | 3. Evaluation | "Review my evaluation approach, challenge what I missed, suggest test cases and metrics." | Structured interpretation in `/ask` so the LLM can be evaluated separately; cases T1–T6, T8, T11, T16; rewordings for selected cases; critical errors first; report actual results, not just accuracy |
 | 4. Architecture | "Review critically; suggest a minimal plan; what is over-complicated or missing given the time limit?" | Fixed tools with validated parameters (no generated SQL); LLM interprets only; fixed answer templates (no second LLM call); `/summary` without LLM; simple UI with no conversation memory; never return incomplete results |
-| 5. Build | "Backend first with tests; OpenRouter with configurable model; .env support; no keys in git; keep this log; scan for credentials before pushing." | Real ECB rates only, never assumed; be explicit about which providers were actually tested |
+| 5. Backend | "Backend first with tests; OpenRouter with configurable model; .env support; no keys in git; keep this log; scan for credentials before pushing." | Real ECB rates only, never assumed; be explicit about which providers were actually tested; review the backend before the frontend |
+| 6. Frontend | "Vite + React + TypeScript, keep it simple. Key findings and limitations first, evidence in collapsible tables. Handle all response states. Change 'NO ISSUE FOUND' wording. Then run the full app and evaluation again, keep the original reports including the checker issue." | Architecture stays in the README (no design §4); check results worded as "No issue detected in checked fields" |
 
 ## 2. Corrections the review produced
 
@@ -35,13 +36,25 @@ No secrets and no raw chat history.
 | First eval run: 4 "major" consistency findings | Investigated: only LLM-written wording differed (clarification text, decline explanation) or full-year dates equivalent to no dates. Check changed to compare meaning; the original strict report is kept in `eval/results/` |
 | How to know clarification options are usable | Added a follow-through check: each option is re-asked and must be answered with the oracle's figures |
 | Pydantic `anyOf`/`title` in tool schemas may be rejected by some providers | Schemas simplified (nullable `anyOf` removed, catalog enums added); tested on two OpenRouter models |
+| "NO ISSUE FOUND" still sounded like a verdict (my review) | Labels come from the backend (`RESULT_LABELS`): "No issue detected in checked fields", "Flag for review", "Cannot determine from available data". The UI uses the same labels, so the two cannot drift |
+| UI screenshots: invoice checks repeated as text lines and in the table | For invoice checks the card shows the headline line and the table only |
+| Dev proxy returns an empty HTTP 500 when the backend is down; the UI said "unexpected response" | Message now says no valid response was received and asks whether the backend is running |
+| UI smoke test: an ambiguous selector matched both the parameter chip and the answer text | Fixed the test (selector scoped to the chip); not an app bug |
+| Re-running the evaluation would overwrite earlier reports | Reports renamed by run (`eval/results/README.md`); new runs are timestamped by default. Run 1's JSON had already been overwritten by run 2; its Markdown report is kept |
+| Production cost was an estimate | Token usage and provider-reported cost are now captured per question and summarised in each evaluation report |
 
-## 4. Prompts in the product
+## 4. Verification actually run (2026-11-05)
+
+- Backend: 65 pytest tests passed (no network).
+- Evaluation, run 3 (after the frontend), 3 runs per case: 0 critical errors and 11/11 cases with no findings for both `anthropic/claude-haiku-5.5` and `openai/gpt-6-luna`; failure injection 3/3.
+- Full app: two backends (one with an unreachable LLM endpoint) plus the Vite dev server, driven by `frontend/e2e/ui_smoke.mjs`: 24/24 UI checks passed. Screenshots in `docs/screenshots/` were reviewed by eye, which is how the duplicated invoice-check text and the overlapping composer were found.
+
+## 5. Prompts in the product
 
 - `backend/app/prompts/interpreter_system.md`: the only LLM prompt. It contains routing rules, the clarify-or-decline policy, the data catalog and the full policy text, and treats the user's question as data.
 - No LLM writes answer text: answers come from `backend/app/templates.py`.
 
-## 5. Credential hygiene
+## 6. Credential hygiene
 
 - `.env` is git-ignored; `.env.example` has an empty key.
 - Before each push, the working tree and full git history are scanned for key patterns (OpenRouter/OpenAI `sk-…`, `Bearer …` tokens, non-empty `API_KEY=`).
