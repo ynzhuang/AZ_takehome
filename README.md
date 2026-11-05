@@ -158,7 +158,7 @@ The interpreter works with any **OpenAI-compatible `/chat/completions` endpoint 
   "question": "…", "answer": "text from a fixed template", "result": { "…structured figures…" },
   "interpretation": { "tool": "spend", "route": "data", "params": { "countries": ["Spain"] },
                       "interpreter": "anthropic/claude-haiku-5.5 via https://openrouter.ai/api/v1",
-                      "latency_ms": 900, "usage": { "prompt_tokens": 6124, "completion_tokens": 64, "cost": 0.0006 },
+                      "latency_ms": 900, "usage": { "prompt_tokens": 6459, "completion_tokens": 63, "cost": 0.0007 },
                       "follow_up_to": null },
   "evidence": { "rows": ["…invoice rows with EUR amount and FX rate used…"], "row_count": 49,
                 "clauses": [{ "id": "5.1", "section": "…", "text": "…" }], "fx_rates": ["…"] },
@@ -214,6 +214,7 @@ HTTP status codes:
 - Clarification options are re-asked to check they get answered correctly.
 - Failures are injected: timeout, malformed tool call, invalid parameters.
 - Follow-up cases send the earlier question first and pass the last answered turn as context, as the frontend does. T18 checks that a self-contained question does not inherit filters; T19 checks that a follow-up sent without context is clarified.
+- Dropped-condition cases: T20 checks that a vendor named by name is applied as a filter; T21 checks that a condition no tool can apply ("over EUR 50,000") is clarified or declined. Answering T21 counts as critical.
 
 **Results, last run after a code change (run 12):** 16 cases (T1–T6, T8, T11, rewordings of T1, T3 and T5, follow-ups T17–T19, and dropped conditions T20–T21) and 3 injected failures.
 
