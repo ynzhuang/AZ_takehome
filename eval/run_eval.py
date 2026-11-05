@@ -302,15 +302,16 @@ def failure_injection(settings) -> list[dict]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=3)
-    ap.add_argument("--out", default=None, help="output file stem (default: eval/results/<model>)")
+    ap.add_argument("--out", default=None, help="output file stem (default: eval/results/<UTC timestamp>_<model>)")
     args = ap.parse_args()
 
     settings = load_settings()
     exp = oracle.expected()
     label = settings.llm_label
     slug = re.sub(r"[^a-z0-9]+", "-", (settings.llm_model if settings.llm_provider != "stub" else "stub").lower()).strip("-")
-    stem = Path(args.out) if args.out else ROOT / "eval" / "results" / slug
     started = datetime.now(timezone.utc)
+    # Never overwrite earlier reports: default names are timestamped.
+    stem = Path(args.out) if args.out else ROOT / "eval" / "results" / f"{started:%Y-%m-%dT%H%M}Z_{slug}"
 
     service_ctx = build_service(settings.__class__(**{**settings.__dict__, "llm_provider": "stub"})).ctx
     tool_results = tools_level(service_ctx, exp)
@@ -327,6 +328,7 @@ def main() -> int:
                 runs.append({"run": i + 1, "http": resp.status_code, "status": body["status"],
                              "tool": body["interpretation"].get("tool"), "params": body["interpretation"].get("params"),
                              "answer": body["answer"], "latency_ms": int((time.monotonic() - t) * 1000),
+                             "usage": body["interpretation"].get("usage"),
                              "findings": findings})
             # consistency across runs: same meaning (status, tool, applied params), same templated answer
             sig = {json.dumps([r["status"], r["tool"], semantic_params(r["params"])], sort_keys=True) for r in runs}
@@ -402,6 +404,16 @@ def render_report(label, settings, runs, started, finished, tool_results, e2e, t
     if lat:
         lat.sort()
         L += ["", f"Latency per /ask (incl. LLM): median {lat[len(lat) // 2]} ms, max {lat[-1]} ms over {len(lat)} calls."]
+    usages = [r["usage"] for x in e2e for r in x["runs"] if r.get("usage")]
+    if usages:
+        med = lambda xs: sorted(xs)[len(xs) // 2]  # noqa: E731
+        pt = [u.get("prompt_tokens", 0) for u in usages]
+        ct = [u.get("completion_tokens", 0) for u in usages]
+        cost = [u["cost"] for u in usages if "cost" in u]
+        line = f"LLM usage per question: median {med(pt)} prompt + {med(ct)} completion tokens"
+        if cost:
+            line += f"; median cost USD {med(cost):.5f}, total USD {sum(cost):.4f} over {len(cost)} calls (as reported by the provider)"
+        L += ["", line + ". Clarification follow-through calls are not included."]
     L += ["", "## Answers (run 1)", ""]
     for x in e2e:
         L += [f"**{x['case']['id']}**: {x['case']['question']}", "", "```", x["runs"][0]["answer"], "```", ""]

@@ -120,6 +120,7 @@ class Interpretation(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     interpreter: str  # which model / stub produced it
     latency_ms: int | None = None
+    usage: dict[str, Any] | None = None  # LLM tokens / cost for this question
 
 
 class EvidenceRow(BaseModel):

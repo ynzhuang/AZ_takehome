@@ -57,6 +57,15 @@ class Context:
     fx: FxTable
 
 
+# Wording for invoice_check results. "ok" is deliberately not "compliant": only the listed fields were checked.
+RESULT_LABELS = {
+    "ok": "No issue detected in checked fields",
+    "flag": "Flag for review",
+    "cannot_determine": "Cannot determine from available data",
+    "not_applicable": "Not applicable",
+}
+
+
 def eur(x: float) -> str:
     return f"EUR {x:,.2f}"
 
@@ -370,6 +379,9 @@ def invoice_check(ctx: Context, p: InvoiceCheckParams) -> ToolOutput:
         "clause": "7.2", "rule": "No self-approval / segregation of duties", "result": "cannot_determine",
         "detail": "The data has no requester, so segregation of duties cannot be checked.",
     })
+
+    for c in checks:
+        c["label"] = RESULT_LABELS[c["result"]]
 
     assumptions = []
     rates = []

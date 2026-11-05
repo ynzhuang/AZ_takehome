@@ -32,7 +32,7 @@ def test_summary_needs_no_llm():
         assert s.status_code == 200
         body = s.json()
         assert body["invoice_count"] == 140
-        assert body["control_flags"] == {"missing_po_at_or_above_threshold": 21, "missing_approver": 25, "non_active_vendor": 29}
+        assert body["control_flags"] == {"po_threshold_eur": 1000.0, "missing_po_at_or_above_threshold": 21, "missing_approver": 25, "non_active_vendor": 29}
         assert {x["currency"] for x in body["by_currency"]} == {"EUR", "GBP", "USD"}
         assert {x["vendor_status"] for x in body["by_vendor_status"]} == {"ACTIVE", "INACTIVE", "ON_HOLD"}
         code, resp = ask(c)
@@ -45,7 +45,7 @@ def test_answered_response_carries_interpretation_evidence_and_versions():
         code, r = ask(c, "Spain spend?")
     assert code == 200 and r["status"] == "answered"
     assert r["interpretation"] == {"tool": "spend", "route": "data", "params": {"countries": ["Spain"]},
-                                   "interpreter": "fake", "latency_ms": 1}
+                                   "interpreter": "fake", "latency_ms": 1, "usage": None}
     assert r["evidence"]["row_count"] == 49 == len(r["evidence"]["rows"])
     assert [c["id"] for c in r["evidence"]["clauses"]] == ["5.1"]
     assert r["evidence"]["fx_rates"] and r["versions"]["policy"] == "FIN-POL-014 v3.2"
